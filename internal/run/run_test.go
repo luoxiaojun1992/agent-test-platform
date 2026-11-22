@@ -28,7 +28,7 @@ type fakeStore struct {
 func (s *fakeStore) TestCases(context.Context, []string) ([]Case, error) {
 	return []Case{{RevisionID: c1, DatasetRevisionID: "d1", Prompt: "p"}, {RevisionID: c2, DatasetRevisionID: "d1", Prompt: "q"}}, nil
 }
-func (s *fakeStore) AgentVersionInfo(context.Context, string) (bool, bool, error) {
+func (s *fakeStore) AgentInfo(context.Context, string) (bool, bool, error) {
 	return true, s.agentDB, nil
 }
 func (s *fakeStore) FindCreation(_ context.Context, key string) (Creation, error) {
@@ -66,7 +66,7 @@ func newSvc(t *testing.T, s *fakeStore) *Service {
 
 func TestCreateQueuesOneRunPerCaseAndRepetition(t *testing.T) {
 	s := &fakeStore{agentDB: true}
-	ids, err := newSvc(t, s).Create(context.Background(), "key", Request{AgentVersionID: agentV, TestCaseRevisionIDs: both, Repetitions: 2})
+	ids, err := newSvc(t, s).Create(context.Background(), "key", Request{AgentID: agentV, TestCaseRevisionIDs: both, Repetitions: 2})
 	if err != nil || len(ids) != 4 {
 		t.Fatalf("ids=%v err=%v", ids, err)
 	}
@@ -77,7 +77,7 @@ func TestCreateQueuesOneRunPerCaseAndRepetition(t *testing.T) {
 
 func TestCreateRequiresAgentDatabase(t *testing.T) {
 	s := &fakeStore{}
-	if _, err := newSvc(t, s).Create(context.Background(), "k", Request{AgentVersionID: agentV, TestCaseRevisionIDs: both}); !errors.Is(err, ErrAgentDatabaseMissing) {
+	if _, err := newSvc(t, s).Create(context.Background(), "k", Request{AgentID: agentV, TestCaseRevisionIDs: both}); !errors.Is(err, ErrAgentDatabaseMissing) {
 		t.Fatalf("no database: %v", err)
 	}
 	if len(s.inserted) != 0 {
@@ -89,15 +89,15 @@ func TestCreateReplayAndConflict(t *testing.T) {
 	s := &fakeStore{agentDB: true}
 	svc := newSvc(t, s)
 	ctx := context.Background()
-	first, err := svc.Create(ctx, "key", Request{AgentVersionID: agentV, TestCaseRevisionIDs: both})
+	first, err := svc.Create(ctx, "key", Request{AgentID: agentV, TestCaseRevisionIDs: both})
 	if err != nil {
 		t.Fatal(err)
 	}
-	again, err := svc.Create(ctx, "key", Request{AgentVersionID: agentV, TestCaseRevisionIDs: both, Repetitions: 1})
+	again, err := svc.Create(ctx, "key", Request{AgentID: agentV, TestCaseRevisionIDs: both, Repetitions: 1})
 	if err != nil || len(again) != len(first) || again[0] != first[0] {
 		t.Fatalf("replay %v %v", again, err)
 	}
-	if _, err := svc.Create(ctx, "key", Request{AgentVersionID: agentV, TestCaseRevisionIDs: both, Repetitions: 3}); !errors.Is(err, ErrIdempotencyConflict) {
+	if _, err := svc.Create(ctx, "key", Request{AgentID: agentV, TestCaseRevisionIDs: both, Repetitions: 3}); !errors.Is(err, ErrIdempotencyConflict) {
 		t.Fatalf("conflict: %v", err)
 	}
 }
@@ -175,7 +175,7 @@ func TestReevaluateRejectsUnknownJudge(t *testing.T) {
 func TestCreateRejectsBadCaseList(t *testing.T) {
 	svc := newSvc(t, &fakeStore{})
 	for _, ids := range [][]string{nil, {c1, c1}, {"x"}} {
-		if _, err := svc.Create(context.Background(), "k", Request{AgentVersionID: agentV, TestCaseRevisionIDs: ids}); !IsInvalidInput(err) {
+		if _, err := svc.Create(context.Background(), "k", Request{AgentID: agentV, TestCaseRevisionIDs: ids}); !IsInvalidInput(err) {
 			t.Fatalf("%v: %v", ids, err)
 		}
 	}

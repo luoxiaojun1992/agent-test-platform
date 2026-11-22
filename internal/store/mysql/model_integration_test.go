@@ -88,7 +88,7 @@ func TestModelSelectionReevaluationAndCancelOnMySQL84(t *testing.T) {
 	}
 
 	const source = "01HZZZZZZZZZZZZZZZZZZZZZZ1"
-	if _, err := database.ExecContext(ctx, `INSERT INTO test_run (id, idempotency_key, test_case_revision_id, dataset_revision_id, agent_version_id,
+	if _, err := database.ExecContext(ctx, `INSERT INTO test_run (id, idempotency_key, test_case_revision_id, dataset_revision_id, agent_id,
 		status, execution_outcome, input_text, final_output) VALUES (?, 'k-source', 'T', 'D', 'A', 'COMPLETED', 'EXECUTED', 'hello', 'out')`, source); err != nil {
 		t.Fatal(err)
 	}

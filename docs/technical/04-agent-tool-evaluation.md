@@ -55,7 +55,7 @@ database access. Observable Tool events are stored as Tool Call Records and are 
 ### 2.1 Tool discovery
 
 The Agent publishes its Tool list through a paginated `GET {agent.chat_endpoint}/v1/tools` (`target-tool-list-response.schema.json`). The platform reads it with
-`POST /api/v1/agent-tool-discovery` when a tester creates an Agent Version in the UI ("从 Agent 读取 Tool 列表") and stores the result as the Version's Tool Catalog.
+`POST /api/v1/agent-tool-discovery` when a tester creates an Agent in the UI ("从 Agent 读取 Tool 列表") and stores the result as the Version's Tool Catalog.
 Which Tools exist, and whether the Agent calls any of them, is entirely the Agent's decision.
 
 Canonical Agent capabilities map to Tool Registry names as follows:
@@ -65,7 +65,7 @@ Canonical Agent capabilities map to Tool Registry names as follows:
 | `MYSQL_QUERY` | `mysql.query` |
 | `MYSQL_EXECUTE` | `mysql.execute` |
 
-When a Tool Catalog is configured, the request Tool list is the intersection of Agent Version
+When a Tool Catalog is configured, the request Tool list is the intersection of Agent
 Tools, Test Case expected Tools, and platform policy. An explicitly empty array means no Tools are
 allowed. A missing Tool Catalog produces `tools=null` and selects `SESSION_LLM_ONLY`; it does not
 invalidate the Run.

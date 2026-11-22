@@ -150,7 +150,7 @@ func newTestCaseHarness(t *testing.T, requestedCount int) (*fakeTestCaseStore, *
 	t.Helper()
 	store := newFakeTestCaseStore()
 
-	request := []byte(`{"schema_version":"1.1","validation_db_ids":["0b6d6f3e-2c4a-4f8e-9a1b-7c5d3e2f1a90"],"description":"Generate order cancellation tests.","target_agent_version_id":null,"generate_dataset":true,"database_profile_id":null,"domain":"e-commerce","agent_mode":"TASK","capabilities":["MYSQL_QUERY","MYSQL_EXECUTE"],"difficulty":{"min":"MEDIUM","max":"HARD"},"test_case_count":` + itoa(requestedCount) + `,"coverage":["NORMAL"],"auto_activate":true}`)
+	request := []byte(`{"schema_version":"1.1","validation_db_ids":["0b6d6f3e-2c4a-4f8e-9a1b-7c5d3e2f1a90"],"description":"Generate order cancellation tests.","target_agent_id":null,"generate_dataset":true,"database_profile_id":null,"domain":"e-commerce","agent_mode":"TASK","capabilities":["MYSQL_QUERY","MYSQL_EXECUTE"],"difficulty":{"min":"MEDIUM","max":"HARD"},"test_case_count":` + itoa(requestedCount) + `,"coverage":["NORMAL"],"auto_activate":true}`)
 	canonicalRequest, requestDigest, err := generation.CanonicalJSON(request)
 	if err != nil {
 		t.Fatal(err)

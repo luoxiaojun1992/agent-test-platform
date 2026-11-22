@@ -54,7 +54,7 @@ Result and Version Comparison
 - 每次 Test Run 使用隔离 MySQL。
 - 使用数据库前置条件和后置条件验证任务是否真正完成。
 - 每个有效 Test Run 必须经过 LLM Judge。
-- 支持不同 Agent Version 在同一组 Test Case Revision 上比较。
+- 支持不同 Agent 在同一组 Test Case Revision 上比较。
 
 ## 2.2 Out of Scope
 
@@ -106,7 +106,7 @@ Agent 可以查询和修改 MySQL。
 
 可选约束：
 
-- Target Agent Version
+- Target Agent
 - Domain
 - Agent Mode：`ANSWER` 或 `TASK`
 - Available Capabilities
@@ -245,9 +245,8 @@ erDiagram
     TEST_SUITE ||--o{ SUITE_SNAPSHOT : versions
     SUITE_SNAPSHOT ||--o{ TEST_CASE_REVISION : contains
 
-    AGENT ||--o{ AGENT_VERSION : versions
+    AGENT ||--o{ TEST_RUN : executes
     TEST_CASE_REVISION ||--o{ TEST_RUN : runs
-    AGENT_VERSION ||--o{ TEST_RUN : executes
     TEST_CASE_REVISION ||--o{ EXPECTED_TOOL_CALL_STEP : expects
     TEST_RUN ||--o{ TOOL_CALL_RECORD : reports
     TEST_RUN ||--o{ EVALUATION_ATTEMPT : evaluated_by
@@ -332,7 +331,7 @@ Pipeline 不是唯一入口。任何已发布（`ACTIVE`/`VALIDATED`）的 Scena
 ```json
 {
   "description": "为电商客服 Agent 生成订单取消测试，需要覆盖已付款和已发货订单。",
-  "target_agent_version_id": "01K4Z6Y7X8W9V0T1S2R3Q4P5N6",
+  "target_agent_id": "01K4Z6Y7X8W9V0T1S2R3Q4P5N6",
   "generate_dataset": true,
   "domain": "e-commerce",
   "agent_mode": "TASK",
@@ -1011,7 +1010,7 @@ Content-Type: application/json
 可观察输出；MVP 不要求目标平台另行实现 Chat History API。连接在可能产生副作用后断开时，
 Runner 不自动重放请求；重试必须创建新的 Run 和新的 Run Database。平台不向 Agent 传递任何数据库凭证。
 
-Agent Version 可配置 Tool Catalog。配置后，`tools` 传递允许的名称、说明和输入 Schema，
+Agent 可配置 Tool Catalog。配置后，`tools` 传递允许的名称、说明和输入 Schema，
 Test Case 使用 `DETERMINISTIC_CHAIN`，平台生成 Expected Tool Call Chain 并做规则匹配。
 未配置 Tool Catalog 时，`tools=null`，Test Case 使用 `SESSION_LLM_ONLY`：平台仍保存 SSE
 中的可观察 Tool 事件，但不按 Tool 名称、参数或顺序执行确定性匹配，Judge 根据经过限长与
@@ -1333,7 +1332,7 @@ INFRA_ERROR
 | Table | Purpose |
 |---|---|
 | `agent` | Agent 稳定身份；`database_profile_id` 指向它自己的数据库（接收测试数据） |
-| `agent_version` | 如何调用 Agent：SSE Chat Endpoint、Token Secret Ref、被测模型、可选 Tool Catalog 和 Version |
+| `agent` | 如何调用 Agent：SSE Chat Endpoint、Token Secret Ref、被测模型、可选 Tool Catalog 和 Version |
 | `database_profile` | MySQL 连接 Profile（主机、端口、账号、Secret Ref、TLS）；被 Agent 引用为其数据库，也用于从已有库导入 Dataset |
 | `validation_mysql` | 平台自己的校验用 MySQL 注册表：只在生成 Dataset 时执行并校验 SQL（16.5） |
 | `dataset_revision_validation_db` | Dataset Revision 与其校验过的校验用 MySQL 的绑定 |
@@ -1361,7 +1360,7 @@ INFRA_ERROR
 - `(agent_id, version)` 唯一。
 - `(logical_id, revision_no)` 唯一。
 - Revision 进入 `VALIDATED` 后禁止内容更新。
-- Test Run 必须固定 Test Case Revision、Dataset Revision、Agent Version；Run 不引用校验用 MySQL。
+- Test Run 必须固定 Test Case Revision、Dataset Revision、Agent；Run 不引用校验用 MySQL。
 - Tool Call 使用 `(test_run_id, sequence)` 唯一，并记录 Source、Arguments/Result Digest 和截断状态。
 - `(test_run_id, attempt_no)` 唯一。
 - Evaluation Attempt 保存 Judge Model、Prompt Version 和参数。
@@ -1377,7 +1376,7 @@ INFRA_ERROR
   "id": "RUN-001",
   "test_case_revision_id": "TC-001-R1",
   "dataset_revision_id": "DS-001-R1",
-  "agent_version_id": "AGENT-A-2.3.1",
+  "agent_id": "AGENT-A-2.3.1",
   "status": "COMPLETED",
   "execution_outcome": "COMPLETED",
   "input": "Please cancel order O10001.",
@@ -1399,7 +1398,7 @@ INFRA_ERROR
 | 类别 | 存放位置 | 内容 |
 |---|---|---|
 | 平台配置 | 环境变量，由 Compose 或 Kubernetes 注入 | `HTTP_ADDR`、`PLATFORM_MYSQL_DSN`（含平台数据库密码）、`SECRET_ENCRYPTION_KEY_ID`、`SECRET_ENCRYPTION_KEY_IDS`、`ATP_ENCRYPTION_KEY_<ID>` |
-| 测试平台配置 | 通过 Web UI 或 API 写入 Platform MySQL，运行中可修改，无需重启 | 校验用 MySQL（16.5）、Database Profile、Agent、Agent Version、LLM Provider（16.6） |
+| 测试平台配置 | 通过 Web UI 或 API 写入 Platform MySQL，运行中可修改，无需重启 | 校验用 MySQL（16.5）、Database Profile、Agent、Agent、LLM Provider（16.6） |
 | 凭证 | 通过 Credentials 页面或 `PUT /api/v1/secrets/{name}` 写入 `secret` 表 | 校验用 MySQL 管理员密码、Agent 数据库密码、Database Profile 密码、LLM Provider Token、Agent Token |
 
 凭证规则：
@@ -1407,7 +1406,7 @@ INFRA_ERROR
 1. 写入：凭证值保存在 `secret` 表，使用 AES-256-GCM 加密。每次写入使用新的随机 12 字节 Nonce，并把凭证名称作为附加认证数据绑定，使密文无法被移到其他名称下。`secret.key_id` 记录加密所用密钥的 ID。
 2. 密钥：平台用当前密钥（`SECRET_ENCRYPTION_KEY_ID`）加密新写入的凭证，并能读取 `SECRET_ENCRYPTION_KEY_IDS` 列出的全部密钥。每个密钥是环境变量 `ATP_ENCRYPTION_KEY_<ID>` 中的 32 字节随机值（base64）。密钥只存在于环境变量中，不写入数据库、日志或 API 响应。
 3. 凭证只写不读：没有接口或页面返回明文，列表只返回名称和时间戳。MVP 不提供删除凭证的接口。
-4. 其他表只保存凭证名称：`database_profile.password_secret_ref`、`validation_mysql.admin_password_secret_name`、`model_config.credential_ref`、`agent_version` 中的 Target Token 引用，以及 Agent 数据库账号的引用。Worker 只从 `secret` 表解析，不回退到环境变量。
+4. 其他表只保存凭证名称：`database_profile.password_secret_ref`、`validation_mysql.admin_password_secret_name`、`model_config.credential_ref`、`agent` 中的 Target Token 引用，以及 Agent 数据库账号的引用。Worker 只从 `secret` 表解析，不回退到环境变量。
 5. 轮换：加入新密钥并设为当前密钥，保留旧密钥，重启后运行 `go run ./cmd/secrets-rewrap`。命令用旧密钥解密、用当前密钥重新加密，并输出各密钥下剩余的凭证数量；数量为零后才能移除旧密钥。轮换不改变凭证的值，也不需要重新录入。
 6. 解密失败（缺少密钥 ID 或密文损坏）时，使用该凭证的作业以不可重试的配置错误结束。错误信息只包含凭证名称和密钥 ID，不包含值。
 7. `PLATFORM_MYSQL_DSN` 保留为环境变量（含数据库密码），与其他平台启动配置一致。
@@ -1528,13 +1527,11 @@ HTTP/1.1 202 Accepted
 POST /api/v1/agents
 GET  /api/v1/agents
 GET  /api/v1/agents/{id}
-POST /api/v1/agents/{id}/versions
-GET  /api/v1/agents/{id}/versions
 POST /api/v1/database-profiles
 GET  /api/v1/database-profiles
 ```
 
-`POST /agents` 可带 `database_profile_id`：该 Agent 自己的数据库，运行测试时接收 Dataset 的初始 SQL（11.4）。账号是每个 Agent 独有的，所以挂在 Agent 上而不是版本上；创建时平台会做连通性检查，失败返回 `400 AGENT_DATABASE_CHECK_FAILED`。Agent 的行为配置只能通过创建新 Agent Version 更新，已创建的 Version 不可修改。`GET /agents/{id}/versions` 为 18.6 的版本列表提供 `target_model`、Tool Catalog 等字段。
+`POST /agents` 登记被测 Agent，可带 `database_profile_id`：该 Agent 自己的数据库，运行测试时接收 Dataset 的初始 SQL（11.4）。账号是每个 Agent 独有的；创建时平台会做连通性检查，失败返回 `400 AGENT_DATABASE_CHECK_FAILED`。Agent 的行为配置（端点、模型、Tool Catalog）在创建时一并登记，已创建的 Agent 配置不可修改。
 
 Database Profile 有两种用途：作为 Agent 的数据库（`agent.database_profile_id`），以及在 `generate_dataset=false` 时作为 Dataset 的导入来源。没有独立管理页面：Agent 管理页创建 Agent 时一并创建，凭证由凭据管理页录入（16.4）。
 
@@ -1576,7 +1573,7 @@ GET  /api/v1/benchmark
 ```
 
 首次 Evaluation 由 Runner 自动创建。`POST /test-runs/{id}/evaluations` 只用于使用新的 Judge
-Version 重新评价，不重新执行 Agent。`GET /test-runs` 支持按 `agent_version_id`、
+Version 重新评价，不重新执行 Agent。`GET /test-runs` 支持按 `agent_id`、
 `test_case_revision_id` 和 `status` 过滤，供 18.10 的 Test Runs 列表和跨 Version 比较使用。
 `GET /evaluations` 是跨 Run 的 Evaluation Attempt 检索入口（18.11），支持按 `status` 和
 `pass` 过滤。`GET /benchmark?test_case_revision_id=...` 返回所选 Test Case Revision 的 Run 按 Agent
@@ -1618,7 +1615,7 @@ Agent Testing
 - 没有独立的“生成测试”页：**在“测试资产”各页里生成**。业务场景、数据集、测试用例可以分别生成，有强依赖的必须先选好依赖（数据集依赖业务场景和校验用 MySQL；测试用例依赖业务场景和该场景下的数据集）。
 - **运行测试只有一个入口**：“测试运行”页右上角的“运行测试”，测试用例列表每一行也有同名按钮。没有测试套件，也没有快照：测试用例版本已经关联了业务场景和数据集，选“被测 Agent + 测试用例”即可运行。
 - “生成任务”详情页（`/jobs/{id}`）不在导航里，由生成动作跳转进入。
-- 资产页默认只读：资产只能通过生成产生，不提供空白手工创建表单。可手工写入的表单只有 Agent、Agent 版本、校验用 MySQL、模型启用和凭据。
+- 资产页默认只读：资产只能通过生成产生，不提供空白手工创建表单。可手工写入的表单只有 Agent、校验用 MySQL、模型启用和凭据。
 
 ## 18.2 Generate Asset Dialog
 
@@ -1668,7 +1665,7 @@ PASS  Semantic Critic
 ```text
 运行详情 RUN-001                              通过
 ==================================================
-Agent 版本             2.3.1
+Agent                  2.3.1
 业务场景版本           SC-001-R1
 数据集版本             DS-001-R1
 测试用例版本           TC-001-R1
@@ -1712,16 +1709,14 @@ LLM 得分                 92 / 100
 ```text
 Agent 管理                                           [ 新建 Agent ]
 ==================================================================
-名称               描述        数据库      创建时间         操作
-Order Support Bot  订单客服    已配置      刚刚             版本列表 新建版本
-Refund Assistant   -           未配置      昨天             版本列表 新建版本
+名称               描述        对话端点        被测模型    Tool 评估    Tool 数    数据库    创建时间
+Order Support Bot  订单客服    https://…      mock-v1    仅会话评测   0          已配置    刚刚
+Refund Assistant   -           https://…      mock-v2    仅会话评测   0          未配置    昨天
 ```
 
-**新建 Agent**：名称、描述，以及可选的**Agent 数据库**（主机、端口、库名、账号、密码凭据名、TLS）。该数据库是这个 Agent 独有的，仅用于运行测试前写入 Dataset 的初始 SQL，不会发给 Agent；填写后创建时会做连通性检查（11.4），不通过则给出原因，Agent 不会被创建。未配置数据库的 Agent 不能运行测试。
+**新建 Agent**：名称、描述、Agent 地址（平台请求 `{地址}/v1/chat` 与 `{地址}/v1/tools`）、Token 凭据名、被测模型、Tool 评估模式，以及可选的**Agent 数据库**（主机、端口、库名、账号、密码凭据名、TLS）。选“确定性调用链”时点“从 Agent 读取 Tool 列表”，由 Agent 自己的 `GET /v1/tools` 提供清单，平台只做评价。该数据库是这个 Agent 独有的，仅用于运行测试前写入 Dataset 的初始 SQL，不会发给 Agent；填写后创建时会做连通性检查（11.4），不通过则给出原因，Agent 不会被创建。未配置数据库的 Agent 不能运行测试。
 
-**新建版本**：版本号、Agent 地址（平台请求 `{地址}/v1/chat` 与 `{地址}/v1/tools`）、Token 凭据名、被测模型、Tool 评估模式。选“确定性调用链”时点“从 Agent 读取 Tool 列表”，由 Agent 自己的 `GET /v1/tools` 提供清单，平台只做评价。
-
-版本列表展示版本号、对话端点、被测模型、Tool 评估模式、Tool 数。版本只描述如何调用 Agent，使不同发布之间的结果可比较。
+Agent 列表展示名称、描述、对话端点、被测模型、Tool 评估模式、Tool 数、数据库和创建时间。
 
 ## 18.7 Generation Jobs
 
@@ -1752,8 +1747,8 @@ What is the current status…   r1    ACTIVE  SC…R1      DS…R1     刚刚   
 测试运行                          [ 运行测试 ]
 ==================================================================
 [ 全部状态 v ]
-运行 ID    状态      执行结果   确定性得分  最终得分  结论   Agent 版本   创建时间
-01M7S…     已完成    COMPLETED  100         95.2      通过   01HZ…       刚刚
+运行 ID    状态      执行结果   确定性得分  最终得分  结论   Agent   创建时间
+01M7S…     已完成    COMPLETED  100         95.2      通过   01HZ…    刚刚
 ```
 
 列表每 5 秒自动刷新，点击一行进入 18.4。
@@ -1764,8 +1759,7 @@ What is the current status…   r1    ACTIVE  SC…R1      DS…R1     刚刚   
 运行测试                                                      [x]
 ==================================================
 测试用例 *   [ 搜索…（默认最新 10 条，可多选）    v ]
-被测 Agent   [ mock-agent v ]
-Agent 版本   [ v1（mock-agent-v1） v ]
+被测 Agent   [ mock-agent（mock-agent-v1） v ]
 重复次数     [ 1 ]   （1–10）
 
 数据集的种子数据会写入该 Agent 配置的数据库。
@@ -1780,15 +1774,15 @@ Evaluation Attempt 始终挂在某个 Test Run 之下，在运行详情的“评
 
 ## 18.11 基准对比
 
-针对**所选测试用例**，对比各 Agent 版本；只统计已完成且真正触达 Agent 的运行。Phase 2 再补充 Repeated Runs、Confidence Interval 和 Judge Calibration。
+针对**所选测试用例**，对比各 Agent；只统计已完成且真正触达 Agent 的运行。Phase 2 再补充 Repeated Runs、Confidence Interval 和 Judge Calibration。
 
 ```text
 基准对比
 ==================================================================
 测试用例  [ 搜索…可多选 v ]
-Agent 版本    有效运行数   通过率   平均得分   关键失败数
-01HZ…2.3.1    8            91.0%    93.1       0
-01HZ…2.4.0    8            84.0%    88.6       2
+Agent      有效运行数   通过率   平均得分   关键失败数
+01HZ…      8            91.0%    93.1       0
+01JZ…      8            84.0%    88.6       2
 ```
 
 比较视图只汇总所选用例的 Run，避免跨用例的无意义对比。
@@ -1832,7 +1826,7 @@ MVP 使用三个独立 Worker Pool：
 - Generation Request 支持客户端 Idempotency Key。
 - Job Stage 使用 `(job_id, stage)` 幂等。
 - Tool 使用 `(job_id, client_case_id)` 幂等。
-- Run 创建整批使用请求级 `Idempotency-Key` 幂等；同一 Agent 版本、测试用例版本和重复序号不会重复创建。
+- Run 创建整批使用请求级 `Idempotency-Key` 幂等；同一 Agent、测试用例版本和重复序号不会重复创建。
 - Evaluation 使用 `(run_id, attempt_no)` 幂等。
 
 ## 19.3 Failure Recovery
@@ -1893,7 +1887,7 @@ request_id
 job_id
 run_id
 evaluation_attempt_id
-agent_version_id
+agent_id
 ```
 
 日志不得记录 Credential、完整 Chain-of-Thought 或不必要的模拟敏感数据。
@@ -1975,7 +1969,7 @@ Failure Rate by Category
 
 ## Phase 1 - Generation-first MVP
 
-- Agent 和 Agent Version 管理。
+- Agent 和 Agent 管理。
 - Single-turn Generation Request 和异步 Job。
 - Scenario、MySQL Dataset、Test Case AI Generation。
 - Context Budget Manager。
@@ -1998,7 +1992,7 @@ Failure Rate by Category
 
 ## Phase 2 - Benchmark Hardening
 
-- Agent Version Comparison 强化：Repeated Runs、Confidence Interval 和 Judge Calibration
+- Agent Comparison 强化：Repeated Runs、Confidence Interval 和 Judge Calibration
   （基础的按测试用例并排比较已经是 Phase 1 的基准对比页面，见 18.11）。
 - CI/CD Integration。
 - Cost、Quota 和 Judge Calibration。
@@ -2061,7 +2055,7 @@ Failure Rate by Category
 13. 每个有效 Test Run 都有成功的 LLM Evaluation Attempt；Judge 失败时不能产生 PASS。
 14. Critical State 或 Critical Tool Failure 无法被 LLM 高分覆盖。
 15. OpenAI 和 Ollama 的 Capability Contract Test 均通过。
-16. Test Run 固定所有 Revision、Agent Version、Model 和 Judge Version，可复现和比较。
+16. Test Run 固定所有 Revision、Agent、Model 和 Judge Version，可复现和比较。
 
 ---
 
@@ -2088,7 +2082,7 @@ Run Mandatory LLM Judge
     ↓
 Apply Critical Gates and Score
     ↓
-Compare Agent Versions
+Compare Agents
 ```
 
 这套设计满足“无需人工编写、单轮生成、MySQL-only、OpenAI/Ollama 兼容、Tool Call 可评价、LLM 必评、上下文受控”的要求，同时保留未来扩展空间。实现级字段、状态迁移、SQL 规范化和错误码以 `docs/technical/` 与 `contracts/` 下的版本化契约为准。
@@ -2102,7 +2096,7 @@ Compare Agent Versions
 | 变更 | 迁移 | 说明 |
 |---|---|---|
 | 去掉 Run Tool Gateway | 0014 | 平台只评价，不代理 Tool；Agent 自己提供 `GET /v1/tools` 并返回 Tool Call Record（`AGENT_REPORTED`）。见 13.1、20 |
-| 去掉测试套件和快照 | 0016 | 测试用例版本已关联场景和数据集，运行直接用“Agent 版本 + 测试用例版本”创建。见 17.4、18.9 |
+| 去掉测试套件和快照 | 0016 | 测试用例版本已关联场景和数据集，运行直接用“Agent + 测试用例版本”创建。见 17.4、18.9 |
 | Agent 数据库挂在 Agent 上 | 0017 | 账号是每个 Agent 独有的，不能挂在版本上。见 16.5、18.6 |
 | 运行只用 Agent 自己的数据库 | 0018 | Run 不再引用任何 Target；没配数据库的 Agent 不能运行。见 11.4 |
 | Target MySQL 改名为校验用 MySQL | 0019 | 它是平台自己的服务器，只在生成时校验 SQL。接口 `/api/v1/validation-mysql`，字段 `validation_db_ids`。见 16.5 |

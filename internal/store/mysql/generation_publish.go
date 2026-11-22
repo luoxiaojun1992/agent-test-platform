@@ -21,7 +21,7 @@ accepted_test_case_count, request_id, input_scenario_revision_id, input_dataset_
 require_manual_review
 FROM generation_job WHERE id = ? FOR UPDATE`
 	selectGenerationRequestForPublishSQL = `SELECT request_json, request_sha256, description_tokens,
-target_agent_version_id, generate_dataset, database_profile_id
+target_agent_id, generate_dataset, database_profile_id
 FROM generation_request WHERE id = ?`
 	selectGenerationArtifactForPublishSQL = `SELECT content_json, content_sha256
 FROM generation_artifact_draft
@@ -105,10 +105,10 @@ func (store *GenerationStore) PublishGeneration(ctx context.Context, jobID strin
 	var requestDocument []byte
 	var requestSHA256 string
 	var descriptionTokens int
-	var targetAgentVersionID, databaseProfileID sql.NullString
+	var targetAgentID, databaseProfileID sql.NullString
 	var generateDataset bool
 	if err := transaction.QueryRowContext(ctx, selectGenerationRequestForPublishSQL, requestID).Scan(
-		&requestDocument, &requestSHA256, &descriptionTokens, &targetAgentVersionID, &generateDataset, &databaseProfileID,
+		&requestDocument, &requestSHA256, &descriptionTokens, &targetAgentID, &generateDataset, &databaseProfileID,
 	); err != nil {
 		return generation.Job{}, fmt.Errorf("load generation request for publish: %w", err)
 	}
@@ -170,7 +170,7 @@ func (store *GenerationStore) PublishGeneration(ctx context.Context, jobID strin
 	if pipelineID.Valid {
 		chain := pipelineChainContext{
 			requestDocument: requestDocument, requestSHA256: requestSHA256, descriptionTokens: descriptionTokens,
-			targetAgentVersionID: nullStringPtr(targetAgentVersionID), generateDataset: generateDataset,
+			targetAgentID: nullStringPtr(targetAgentID), generateDataset: generateDataset,
 			databaseProfileID: nullStringPtr(databaseProfileID), generatorConfigSHA256: generatorConfigSHA256,
 			requireManualReview: requireManualReview,
 		}
@@ -241,12 +241,12 @@ func revisionLifecycleStatus(autoActivate bool) string {
 
 // pipelineChainContext carries the fields a chained Job's own generation_request row must
 // copy from the Generation Pipeline's originating request, so every Job in the pipeline is
-// generated against the same description, target Agent Version, and Dataset source.
+// generated against the same description, target Agent, and Dataset source.
 type pipelineChainContext struct {
 	requestDocument       []byte
 	requestSHA256         string
 	descriptionTokens     int
-	targetAgentVersionID  *string
+	targetAgentID         *string
 	generateDataset       bool
 	databaseProfileID     *string
 	generatorConfigSHA256 string
@@ -334,7 +334,7 @@ func (store *GenerationStore) createPipelineStageJob(
 	}
 	if _, err := tx.ExecContext(ctx, upsertGenerationRequestSQL,
 		requestID, idempotencyKey, chain.requestDocument, chain.requestSHA256, chain.descriptionTokens,
-		chain.targetAgentVersionID, chain.generateDataset, chain.databaseProfileID,
+		chain.targetAgentID, chain.generateDataset, chain.databaseProfileID,
 	); err != nil {
 		return "", fmt.Errorf("upsert chained generation request: %w", err)
 	}

@@ -28,7 +28,7 @@ func (s fakeStore) DailyAssets(context.Context, time.Time) (map[string]DailyAsse
 func (s fakeStore) ScoreBuckets(context.Context, time.Time) (map[int]int, error) {
 	return s.buckets, nil
 }
-func (fakeStore) ByAgentVersion(context.Context, time.Time) ([]AgentVersionStat, error) {
+func (fakeStore) ByAgent(context.Context, time.Time) ([]AgentStat, error) {
 	return nil, nil
 }
 

@@ -39,7 +39,7 @@ type CreateJobInput struct {
 	DescriptionTokens       int
 	RequestedTestCaseCount  int
 	GeneratorConfigSHA256   string
-	TargetAgentVersionID    *string
+	TargetAgentID           *string
 	GenerateDataset         bool
 	DatabaseProfileID       *string
 	ValidationDBIDs         []string
@@ -153,7 +153,7 @@ func (service *Service) CreateGenerationJob(ctx context.Context, input CreateJob
 	}
 	input.RequestSHA256 = digest
 	input.GeneratorConfigSHA256 = service.generatorConfigSHA256
-	input.TargetAgentVersionID = normalized.TargetAgentVersionID
+	input.TargetAgentID = normalized.TargetAgentID
 	input.GenerateDataset = normalized.GenerateDataset
 	input.DatabaseProfileID = normalized.DatabaseProfileID
 	input.ValidationDBIDs = normalized.ValidationDBIDs

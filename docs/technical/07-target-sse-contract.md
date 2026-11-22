@@ -2,7 +2,7 @@
 
 ## 1. Scope
 
-A Test Run sends exactly one user message to a configured Target Agent Version. The target
+A Test Run sends exactly one user message to a configured Target Agent. The target
 platform processes that message, including any internal Tool calls, and streams all observable
 session events over one HTTP response. The MVP does not require a separate Chat History API.
 
@@ -13,8 +13,8 @@ per-turn plus final Judge evaluation direction.
 The stream is execution evidence, not hidden reasoning. Targets must never emit Chain-of-Thought,
 private scratchpads, credentials, or internal logs.
 
-An Agent Version pins one `target_model` returned by the authenticated Model List API. The Runner
-places that exact model ID in every Chat request; changing the model creates a new Agent Version.
+An Agent pins one `target_model` returned by the authenticated Model List API. The Runner
+places that exact model ID in every Chat request; changing the model creates a new Agent.
 
 ## 2. Authentication and Endpoint
 
@@ -28,7 +28,7 @@ Content-Type: application/json; charset=utf-8
 Cache-Control: no-cache
 ```
 
-`target_bearer_token_ref` belongs to the Target Agent Version. It is distinct from the platform
+`target_bearer_token_ref` belongs to the Target Agent. It is distinct from the platform
 API Bearer Token, OpenAI API key, optional Ollama token, and run-scoped database/Tool credentials.
 The resolved target token is used only in the outbound `Authorization` header and is never stored
 in Run evidence or logs.
@@ -47,7 +47,7 @@ Accept: application/json
 ```
 
 The response validates against `target-model-list-response.schema.json`. The platform calls this
-endpoint when creating or validating an Agent Version, then pins one returned model ID as
+endpoint when creating or validating an Agent, then pins one returned model ID as
 `target_model`. A Test Run must not silently switch to another model if the pinned model disappears.
 The request timeout is 10 seconds and may be shortened by the caller deadline.
 
@@ -119,7 +119,7 @@ The normative schema is `contracts/schemas/target-chat-request.schema.json`.
 
 The request carries no database connection details. The Agent already has its own database access. The platform seeds the Run database with its own administrator account and tells the Agent the Run database name inside the user prompt text (`message.content`), never through an API field. `tools` has two modes:
 
-- array: the Target Agent Version has a Tool Catalog. Only listed Tools are allowed and the Test
+- array: the Target Agent has a Tool Catalog. Only listed Tools are allowed and the Test
   Case uses deterministic expected-chain evaluation;
 - `null`: no Tool Catalog is configured. The platform does not apply deterministic Tool name,
   argument, or ordering rules. Observable Tool events may still be streamed and are supplied to

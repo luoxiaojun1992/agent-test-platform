@@ -57,7 +57,7 @@ describe('api2 requests', () => {
   it('builds list URLs with cursor and filters, skipping empty values', async () => {
     const urls: string[] = []
     mockFetch(200, { items: [], next_cursor: null }, (u) => urls.push(u))
-    await api2.listRuns('tok', 'CUR', { status: 'COMPLETED', agent_version_id: '' })
+    await api2.listRuns('tok', 'CUR', { status: 'COMPLETED', agent_id: '' })
     await api2.listRuns('tok', '', {})
     expect(urls[0]).toBe('/api/v1/test-runs?limit=50&cursor=CUR&status=COMPLETED')
     expect(urls[1]).toBe('/api/v1/test-runs?limit=50')
@@ -67,9 +67,9 @@ describe('api2 requests', () => {
     let url = ''
     let init: RequestInit | undefined
     mockFetch(202, { run_ids: ['R1'] }, (u, i) => { url = u; init = i })
-    await api2.createRuns('tok', { agent_version_id: 'V1', test_case_revision_ids: ['C1', 'C2'], repetitions: 3 })
+    await api2.createRuns('tok', { agent_id: 'V1', test_case_revision_ids: ['C1', 'C2'], repetitions: 3 })
     expect(url).toBe('/api/v1/test-runs')
-    expect(JSON.parse(String(init?.body))).toEqual({ agent_version_id: 'V1', test_case_revision_ids: ['C1', 'C2'], repetitions: 3 })
+    expect(JSON.parse(String(init?.body))).toEqual({ agent_id: 'V1', test_case_revision_ids: ['C1', 'C2'], repetitions: 3 })
   })
 
   it('discovers Tools through the platform endpoint', async () => {

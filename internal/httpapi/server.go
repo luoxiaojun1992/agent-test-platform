@@ -109,8 +109,6 @@ func NewServer(service GenerationService, secretService SecretService, targetSer
 	mux.Handle("POST /api/v1/agents", server.authenticate(http.HandlerFunc(server.createAgent)))
 	mux.Handle("GET /api/v1/agents", server.authenticate(http.HandlerFunc(server.listAgents)))
 	mux.Handle("GET /api/v1/agents/{agentId}", server.authenticate(http.HandlerFunc(server.getAgent)))
-	mux.Handle("POST /api/v1/agents/{agentId}/versions", server.authenticate(http.HandlerFunc(server.createAgentVersion)))
-	mux.Handle("GET /api/v1/agents/{agentId}/versions", server.authenticate(http.HandlerFunc(server.listAgentVersions)))
 	server.registerCatalogRoutes(mux)
 	server.registerRunRoutes(mux)
 	server.handler = mux

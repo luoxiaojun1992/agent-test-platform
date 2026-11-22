@@ -19,7 +19,7 @@ import (
 const (
 	upsertGenerationRequestSQL = `INSERT INTO generation_request (
 id, idempotency_key, request_json, request_sha256, description_tokens,
-target_agent_version_id, generate_dataset, database_profile_id
+target_agent_id, generate_dataset, database_profile_id
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON DUPLICATE KEY UPDATE id = id`
 	lockGenerationRequestSQL = `SELECT id, request_sha256
@@ -159,7 +159,7 @@ func (store *GenerationStore) CreateGenerationJob(ctx context.Context, input gen
 	defer transaction.Rollback()
 	if _, err := transaction.ExecContext(ctx, upsertGenerationRequestSQL,
 		requestID, input.IdempotencyKey, []byte(input.Request), input.RequestSHA256, input.DescriptionTokens,
-		input.TargetAgentVersionID, input.GenerateDataset, input.DatabaseProfileID,
+		input.TargetAgentID, input.GenerateDataset, input.DatabaseProfileID,
 	); err != nil {
 		return generation.Job{}, fmt.Errorf("upsert generation request: %w", err)
 	}
@@ -228,7 +228,7 @@ func (store *GenerationStore) createGenerationPipeline(ctx context.Context, inpu
 	defer transaction.Rollback()
 	if _, err := transaction.ExecContext(ctx, upsertGenerationRequestSQL,
 		requestID, input.IdempotencyKey, []byte(input.Request), input.RequestSHA256, input.DescriptionTokens,
-		input.TargetAgentVersionID, input.GenerateDataset, input.DatabaseProfileID,
+		input.TargetAgentID, input.GenerateDataset, input.DatabaseProfileID,
 	); err != nil {
 		return generation.Job{}, fmt.Errorf("upsert generation request: %w", err)
 	}
@@ -480,9 +480,9 @@ func validateCreateGenerationCommon(input generation.CreateJobInput) error {
 	if len(input.ValidationDBIDs) < minimumTargets || len(input.ValidationDBIDs) > generation.MaxRequestTargets {
 		return fmt.Errorf("validation_db_ids must name 1 to %d registered validation MySQL instances", generation.MaxRequestTargets)
 	}
-	if input.TargetAgentVersionID != nil {
-		if _, err := ulid.ParseStrict(*input.TargetAgentVersionID); err != nil {
-			return fmt.Errorf("target Agent Version ID is invalid")
+	if input.TargetAgentID != nil {
+		if _, err := ulid.ParseStrict(*input.TargetAgentID); err != nil {
+			return fmt.Errorf("target Agent ID is invalid")
 		}
 	}
 	if input.GenerateDataset && input.DatabaseProfileID != nil {

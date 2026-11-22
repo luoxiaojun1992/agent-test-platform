@@ -88,9 +88,8 @@ func (store *RunStore) BeginExecution(ctx context.Context, runID string, lease r
 			FROM test_run r
 			JOIN test_case_revision tc ON tc.id = r.test_case_revision_id
 			JOIN dataset_revision d ON d.id = r.dataset_revision_id
-			JOIN agent_version a ON a.id = r.agent_version_id
-			JOIN agent ag ON ag.id = a.agent_id
-			LEFT JOIN database_profile p ON p.id = ag.database_profile_id
+			JOIN agent a ON a.id = r.agent_id
+			LEFT JOIN database_profile p ON p.id = a.database_profile_id
 			WHERE r.id = ? FOR UPDATE`, runID).Scan(&status, &input, &cancelAt, &datasetID, &caseJSON, &schemaSQL, &seedSQL,
 			&endpoint, &tokenRef, &model, &toolMode, &tools, &dbHost, &dbPort, &dbUser, &dbSecret, &dbTLS, &dbCA)
 		if errors.Is(err, sql.ErrNoRows) {

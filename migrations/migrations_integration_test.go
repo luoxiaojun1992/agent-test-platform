@@ -67,7 +67,6 @@ func TestApplyToMySQL84(t *testing.T) {
 	wantTables := []string{
 		"agent",
 		"agent_session_event",
-		"agent_version",
 		"database_profile",
 		"dataset",
 		"dataset_revision",

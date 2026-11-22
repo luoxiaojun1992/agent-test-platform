@@ -34,7 +34,7 @@ export function RunsPage({ token }: { token: string }) {
             { key: 'det', title: '确定性得分', render: (run) => <Score value={run.deterministic_score} /> },
             { key: 'final', title: '最终得分', render: (run) => <Score value={run.final_score} /> },
             { key: 'pass', title: '结论', render: (run) => <PassTag pass={run.pass} /> },
-            { key: 'agent', title: 'Agent 版本', render: (run) => <Mono>{shortID(run.agent_version_id)}</Mono> },
+            { key: 'agent', title: 'Agent', render: (run) => <Mono>{shortID(run.agent_id)}</Mono> },
             { key: 'created', title: '创建时间', render: (run) => formatDate(run.created_at) },
           ]} />
         <LoadMore query={query} />

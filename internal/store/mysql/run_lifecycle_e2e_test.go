@@ -75,7 +75,7 @@ func TestRunLifecycleWithMockTargetAndJudgeEndToEnd(t *testing.T) {
 	defer database.Close()
 
 	const (
-		version = "01HZZZZZZZZZZZZZZZZZZZZZZ2"
+		agentID = "01HZZZZZZZZZZZZZZZZZZZZZZ2"
 	)
 	caseJSON := `{"schema_version":"1.0","prompt":"How many rows are in t?","agent_mode":"ANSWER","preconditions":[],"postconditions":[],
 		"allowed_state_changes":[],"knowledge_documents":[],"tool_evaluation_mode":"SESSION_LLM_ONLY","expected_tool_call_chain":null,
@@ -107,9 +107,8 @@ func TestRunLifecycleWithMockTargetAndJudgeEndToEnd(t *testing.T) {
 	port, _ := strconv.Atoi(portText)
 	exec(`INSERT INTO database_profile (id, name, engine, host, port, database_name, username, password_secret_ref, tls_mode, snapshot_mode, config_json, config_sha256, idempotency_key)
 		VALUES ('01HZZZZZZZZZZZZZZZZZZZZZP1', 'agent-db', 'MYSQL', ?, ?, 'agent_db', ?, 'agent-db-password', 'DISABLED_LOCAL_ONLY', 'SCHEMA_ONLY', JSON_OBJECT(), REPEAT('f', 64), 'profile-key')`, host, port, adminConfig.User)
-	exec(`INSERT INTO agent (id, name, database_profile_id, config_sha256, idempotency_key) VALUES ('AG', 'mock-agent', '01HZZZZZZZZZZZZZZZZZZZZZP1', REPEAT('e', 64), 'agent-key')`)
-	exec(`INSERT INTO agent_version (id, agent_id, version, chat_endpoint, target_bearer_token_ref, target_model, contract_version, tool_evaluation_mode, config_json, config_sha256)
-		VALUES ('` + version + `', 'AG', 'v1', '@@ENDPOINT@@', 'tok', 'mock-agent-v1', '1.0', 'SESSION_LLM_ONLY', JSON_OBJECT(), REPEAT('d', 64))`)
+	exec(`INSERT INTO agent (id, name, database_profile_id, chat_endpoint, target_bearer_token_ref, target_model, contract_version, tool_evaluation_mode, config_json, config_sha256, idempotency_key)
+		VALUES ('` + agentID + `', 'mock-agent', '01HZZZZZZZZZZZZZZZZZZZZZP1', '@@ENDPOINT@@', 'tok', 'mock-agent-v1', '1.0', 'SESSION_LLM_ONLY', JSON_OBJECT(), REPEAT('d', 64), 'agent-key')`)
 
 	runStore, _ := mysqlstore.NewRunStore(database)
 	runService, _ := run.NewService(runStore)
@@ -142,14 +141,13 @@ func TestRunLifecycleWithMockTargetAndJudgeEndToEnd(t *testing.T) {
 		return response.StatusCode, out
 	}
 
-	exec(`INSERT INTO agent (id, name, config_sha256, idempotency_key) VALUES ('AG2', 'no-db-agent', REPEAT('1', 64), 'agent-key-2')`)
-	exec(`INSERT INTO agent_version (id, agent_id, version, chat_endpoint, target_bearer_token_ref, target_model, contract_version, tool_evaluation_mode, config_json, config_sha256)
-		VALUES ('01HZZZZZZZZZZZZZZZZZZZZZZ3', 'AG2', 'v1', '@@ENDPOINT@@', 'tok', 'mock-agent-v1', '1.0', 'SESSION_LLM_ONLY', JSON_OBJECT(), REPEAT('2', 64))`)
-	if code, body := call("POST", "/api/v1/test-runs", "create-runs-nodb", `{"agent_version_id":"01HZZZZZZZZZZZZZZZZZZZZZZ3","test_case_revision_ids":["01HZZZZZZZZZZZZZZZZZZZZZT1"]}`); code != 409 || body["code"] != "AGENT_DATABASE_NOT_CONFIGURED" {
+	exec(`INSERT INTO agent (id, name, chat_endpoint, target_bearer_token_ref, target_model, contract_version, tool_evaluation_mode, config_json, config_sha256, idempotency_key)
+		VALUES ('01HZZZZZZZZZZZZZZZZZZZZZZ3', 'no-db-agent', '@@ENDPOINT@@', 'tok', 'mock-agent-v1', '1.0', 'SESSION_LLM_ONLY', JSON_OBJECT(), REPEAT('2', 64), 'agent-key-2')`)
+	if code, body := call("POST", "/api/v1/test-runs", "create-runs-nodb", `{"agent_id":"01HZZZZZZZZZZZZZZZZZZZZZZ3","test_case_revision_ids":["01HZZZZZZZZZZZZZZZZZZZZZT1"]}`); code != 409 || body["code"] != "AGENT_DATABASE_NOT_CONFIGURED" {
 		t.Fatal("an Agent without a database must be refused", code, body)
 	}
 
-	code, body := call("POST", "/api/v1/test-runs", "create-runs-1", `{"agent_version_id":"`+version+`","test_case_revision_ids":["01HZZZZZZZZZZZZZZZZZZZZZT1"]}`)
+	code, body := call("POST", "/api/v1/test-runs", "create-runs-1", `{"agent_id":"`+agentID+`","test_case_revision_ids":["01HZZZZZZZZZZZZZZZZZZZZZT1"]}`)
 	ids, _ := body["run_ids"].([]any)
 	if code != 202 || len(ids) != 1 {
 		t.Fatal("create runs", code, body)

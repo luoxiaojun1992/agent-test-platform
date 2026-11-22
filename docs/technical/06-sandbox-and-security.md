@@ -212,7 +212,7 @@ table (migration `0007_secret.sql`):
   A decryption failure ends the work with a non-retryable configuration error that names the secret but not its
   value.
 - Other tables store the secret name only: `database_profile.password_secret_ref`,
-  `validation_mysql.admin_password_secret_name`, `model_config.credential_ref`, `agent_version.target_bearer_token_ref`,
+  `validation_mysql.admin_password_secret_name`, `model_config.credential_ref`, `agent.target_bearer_token_ref`,
   and the Agent database credential references.
 - Only the platform database DSN and the encryption keys are environment variables. Platform access credentials are
   pending the owner's decision (implementation-readiness Open Decision); LLM provider tokens are secrets entered in

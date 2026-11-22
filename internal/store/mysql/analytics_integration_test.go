@@ -48,11 +48,10 @@ func TestAnalyticsAggregatesOnMySQL84(t *testing.T) {
 			t.Fatalf("%v\n%s", err, query)
 		}
 	}
-	exec(`INSERT INTO agent (id, name, config_sha256, idempotency_key) VALUES ('AG', 'bot', REPEAT('a', 64), 'k')`)
-	exec(`INSERT INTO agent_version (id, agent_id, version, chat_endpoint, target_bearer_token_ref, target_model, contract_version, tool_evaluation_mode, config_json, config_sha256)
-		VALUES ('V1', 'AG', 'v1', 'http://x', 't', 'm', '1.0', 'SESSION_LLM_ONLY', JSON_OBJECT(), REPEAT('b', 64))`)
+	exec(`INSERT INTO agent (id, name, chat_endpoint, target_bearer_token_ref, target_model, contract_version, tool_evaluation_mode, config_json, config_sha256, idempotency_key)
+		VALUES ('AG', 'bot', 'http://x', 't', 'm', '1.0', 'SESSION_LLM_ONLY', JSON_OBJECT(), REPEAT('a', 64), 'k')`)
 	run := func(id, status string, createdAt time.Time) {
-		exec(`INSERT INTO test_run (id, idempotency_key, test_case_revision_id, dataset_revision_id, agent_version_id, status, input_text, created_at) VALUES (?, ?, 'T', 'D', 'V1', ?, 'x', ?)`, id, "k-"+id, status, createdAt)
+		exec(`INSERT INTO test_run (id, idempotency_key, test_case_revision_id, dataset_revision_id, agent_id, status, input_text, created_at) VALUES (?, ?, 'T', 'D', 'AG', ?, 'x', ?)`, id, "k-"+id, status, createdAt)
 	}
 	attempt := func(id, runID string, no int, status string, score float64, pass bool) {
 		exec(`INSERT INTO evaluation_attempt (id, test_run_id, attempt_no, status, judge_model_config_id, judge_model_alias, judge_provider, judge_model, judge_prompt_version, judge_config_sha256, request_json, final_score, pass)
@@ -111,8 +110,8 @@ func TestAnalyticsAggregatesOnMySQL84(t *testing.T) {
 	if statuses["COMPLETED"] != 3 || statuses["RUNNING"] != 1 {
 		t.Fatalf("statuses (all time) = %+v", statuses)
 	}
-	if len(overview.ByAgentVersion) != 1 || overview.ByAgentVersion[0].Runs != 3 || overview.ByAgentVersion[0].Evaluated != 2 || overview.ByAgentVersion[0].AgentName != "bot" {
-		t.Fatalf("by agent version (the 60-day-old Run is outside the window) = %+v", overview.ByAgentVersion)
+	if len(overview.ByAgent) != 1 || overview.ByAgent[0].Runs != 3 || overview.ByAgent[0].Evaluated != 2 || overview.ByAgent[0].AgentName != "bot" {
+		t.Fatalf("by agent (the 60-day-old Run is outside the window) = %+v", overview.ByAgent)
 	}
 	var scenarios analytics.AssetCount
 	for _, asset := range overview.Assets {
@@ -126,7 +125,7 @@ func TestAnalyticsAggregatesOnMySQL84(t *testing.T) {
 	if last := overview.DailyAssets[len(overview.DailyAssets)-1]; last.Scenarios != 1 {
 		t.Fatalf("a scenario created today must show on today's bar: %+v", last)
 	}
-	if overview.Agents.Agents != 1 || overview.Agents.Versions != 1 {
+	if overview.Agents.Agents != 1 {
 		t.Fatalf("agents = %+v", overview.Agents)
 	}
 }

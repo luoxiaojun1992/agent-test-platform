@@ -60,7 +60,7 @@ func TestEvaluationPipelineWithMockJudgeOnMySQL84(t *testing.T) {
 		agent_mode, tool_evaluation_mode, content_json, content_sha256, lifecycle_status) VALUES ('T', 'TC', 'G', 'S', 'D', 1, '1.0', 'SINGLE_TURN', 'SESSION_LLM_ONLY', ?, REPEAT('a', 64), 'ACTIVE')`, caseJSON); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := workerDB.ExecContext(ctx, `INSERT INTO test_run (id, idempotency_key, test_case_revision_id, dataset_revision_id, agent_version_id,
+	if _, err := workerDB.ExecContext(ctx, `INSERT INTO test_run (id, idempotency_key, test_case_revision_id, dataset_revision_id, agent_id,
 		status, execution_outcome, input_text, final_output, deterministic_json) VALUES (?, 'k-source', 'T', 'D', 'A', 'COMPLETED', 'COMPLETED', 'hello', 'ok',
 		JSON_ARRAY(JSON_OBJECT('id','state_diff','category','STATE','critical',TRUE,'weight',1,'pass',TRUE,'expected',JSON_OBJECT(),'actual',JSON_OBJECT())))`, source); err != nil {
 		t.Fatal(err)

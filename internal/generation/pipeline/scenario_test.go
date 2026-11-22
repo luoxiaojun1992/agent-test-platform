@@ -119,7 +119,7 @@ func normalizedArtifact(t *testing.T) generation.ArtifactSnapshot {
 		"schema_version":"1.1",
 		"validation_db_ids":["0b6d6f3e-2c4a-4f8e-9a1b-7c5d3e2f1a90"],
 		"description":"Generate order cancellation tests.",
-		"target_agent_version_id":null,
+		"target_agent_id":null,
 		"generate_dataset":true,
 		"database_profile_id":null,
 		"domain":"e-commerce",

@@ -23,32 +23,25 @@ CREATE TABLE database_profile (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE agent (
-    id                  CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
-    name                VARCHAR(255) NOT NULL,
-    description         TEXT NULL,
-    created_at          TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    updated_at          TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
-    UNIQUE KEY uq_agent_name (name)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
-CREATE TABLE agent_version (
-    id                  CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
-    agent_id            CHAR(26) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-    version             VARCHAR(128) NOT NULL,
-    chat_endpoint       VARCHAR(2048) NOT NULL,
+    id                      CHAR(26) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
+    name                    VARCHAR(255) NOT NULL,
+    description             TEXT NULL,
+    database_profile_id     CHAR(26) CHARACTER SET ascii COLLATE ascii_bin NULL,
+    chat_endpoint           VARCHAR(2048) NOT NULL,
     target_bearer_token_ref VARCHAR(512) NOT NULL,
-    target_model        VARCHAR(255) NOT NULL,
-    contract_version    VARCHAR(32) NOT NULL,
-    tool_evaluation_mode VARCHAR(32) NOT NULL,
-    tool_catalog_json   JSON NULL,
-    database_profile_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin NULL,
-    config_json         JSON NOT NULL,
-    config_sha256       CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-    created_at          TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    UNIQUE KEY uq_agent_version (agent_id, version),
-    CONSTRAINT fk_agent_version_agent FOREIGN KEY (agent_id) REFERENCES agent(id),
-    CONSTRAINT fk_agent_version_database_profile FOREIGN KEY (database_profile_id) REFERENCES database_profile(id),
-    CONSTRAINT ck_agent_version_tool_mode CHECK (
+    target_model            VARCHAR(255) NOT NULL,
+    contract_version        VARCHAR(32) NOT NULL,
+    tool_evaluation_mode    VARCHAR(32) NOT NULL,
+    tool_catalog_json       JSON NULL,
+    config_json             JSON NOT NULL,
+    config_sha256           CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    idempotency_key         VARCHAR(128) NULL,
+    created_at              TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at              TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    UNIQUE KEY uq_agent_name (name),
+    UNIQUE KEY uq_agent_idempotency (idempotency_key),
+    CONSTRAINT fk_agent_database_profile FOREIGN KEY (database_profile_id) REFERENCES database_profile(id),
+    CONSTRAINT ck_agent_tool_mode CHECK (
         (tool_evaluation_mode = 'DETERMINISTIC_CHAIN' AND tool_catalog_json IS NOT NULL)
         OR (tool_evaluation_mode = 'SESSION_LLM_ONLY' AND tool_catalog_json IS NULL)
     )
@@ -106,12 +99,12 @@ CREATE TABLE generation_request (
     request_json        JSON NOT NULL,
     request_sha256      CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     description_tokens  INT UNSIGNED NOT NULL,
-    target_agent_version_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin NULL,
+    target_agent_id     CHAR(26) CHARACTER SET ascii COLLATE ascii_bin NULL,
     generate_dataset    BOOLEAN NOT NULL DEFAULT TRUE,
     database_profile_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin NULL,
     created_at          TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     UNIQUE KEY uq_generation_request_idempotency (idempotency_key),
-    CONSTRAINT fk_generation_request_agent_version FOREIGN KEY (target_agent_version_id) REFERENCES agent_version(id),
+    CONSTRAINT fk_generation_request_agent FOREIGN KEY (target_agent_id) REFERENCES agent(id),
     CONSTRAINT fk_generation_request_database_profile FOREIGN KEY (database_profile_id) REFERENCES database_profile(id),
     CONSTRAINT ck_generation_request_dataset_source CHECK (
         (generate_dataset = TRUE AND database_profile_id IS NULL)
@@ -327,7 +320,7 @@ CREATE TABLE test_run (
     suite_snapshot_id       CHAR(26) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     test_case_revision_id   CHAR(26) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     dataset_revision_id     CHAR(26) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-    agent_version_id        CHAR(26) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    agent_id                CHAR(26) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     repetition_no           SMALLINT UNSIGNED NOT NULL DEFAULT 1,
     status                  VARCHAR(32) NOT NULL,
     execution_outcome       VARCHAR(32) NULL,
@@ -347,12 +340,12 @@ CREATE TABLE test_run (
     created_at              TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     updated_at              TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     UNIQUE KEY uq_test_run_idempotency (idempotency_key),
-    UNIQUE KEY uq_test_run_identity (suite_snapshot_id, agent_version_id, test_case_revision_id, repetition_no),
+    UNIQUE KEY uq_test_run_identity (suite_snapshot_id, agent_id, test_case_revision_id, repetition_no),
     KEY ix_test_run_status (status, created_at),
     CONSTRAINT fk_test_run_snapshot FOREIGN KEY (suite_snapshot_id) REFERENCES suite_snapshot(id),
     CONSTRAINT fk_test_run_case FOREIGN KEY (test_case_revision_id) REFERENCES test_case_revision(id),
     CONSTRAINT fk_test_run_dataset FOREIGN KEY (dataset_revision_id) REFERENCES dataset_revision(id),
-    CONSTRAINT fk_test_run_agent FOREIGN KEY (agent_version_id) REFERENCES agent_version(id)
+    CONSTRAINT fk_test_run_agent FOREIGN KEY (agent_id) REFERENCES agent(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE target_knowledge_document (

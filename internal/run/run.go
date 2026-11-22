@@ -53,9 +53,9 @@ func invalid(format string, args ...any) error {
 	return fmt.Errorf("%w: %s", ErrInvalidInput, fmt.Sprintf(format, args...))
 }
 
-// Request is the body of POST /test-runs: the Test Case Revisions to run on one Agent Version.
+// Request is the body of POST /test-runs: the Test Case Revisions to run on one Agent.
 type Request struct {
-	AgentVersionID      string   `json:"agent_version_id"`
+	AgentID             string   `json:"agent_id"`
 	TestCaseRevisionIDs []string `json:"test_case_revision_ids"`
 	Repetitions         int      `json:"repetitions"`
 }
@@ -67,7 +67,7 @@ type Run struct {
 	ExecutionOutcome     *string         `json:"execution_outcome,omitempty"`
 	TestCaseRevisionID   string          `json:"test_case_revision_id"`
 	DatasetRevisionID    string          `json:"dataset_revision_id"`
-	AgentVersionID       string          `json:"agent_version_id"`
+	AgentID              string          `json:"agent_id"`
 	FinalOutput          *string         `json:"final_output"`
 	PreconditionResults  json.RawMessage `json:"precondition_results"`
 	PostconditionResults json.RawMessage `json:"postcondition_results"`
@@ -106,11 +106,11 @@ type Evaluation struct {
 	CreatedAt       time.Time `json:"created_at"`
 }
 
-// BenchmarkEntry aggregates the Runs of one Agent Version over a set of Test Case Revisions.
+// BenchmarkEntry aggregates the Runs of one Agent over a set of Test Case Revisions.
 // Only COMPLETED Runs whose execution outcome reached the Agent count; INVALID_TEST_DATA, INFRA_ERROR and unfinished
 // Runs are excluded from every figure (docs/architecture.md section 14).
 type BenchmarkEntry struct {
-	AgentVersionID   string  `json:"agent_version_id"`
+	AgentID          string  `json:"agent_id"`
 	RunCount         int     `json:"run_count"`
 	PassRate         float64 `json:"pass_rate"`
 	AvgScore         float64 `json:"avg_score"`
@@ -138,7 +138,7 @@ type Creation struct {
 }
 
 // Filter narrows GET /test-runs.
-type Filter struct{ AgentVersionID, TestCaseRevisionID, Status string }
+type Filter struct{ AgentID, TestCaseRevisionID, Status string }
 
 // EvalFilter narrows GET /evaluations.
 type EvalFilter struct {
@@ -156,11 +156,11 @@ type Cursor struct {
 type Store interface {
 	// TestCases returns the known Test Case Revisions among ids, in the order of ids.
 	TestCases(ctx context.Context, ids []string) ([]Case, error)
-	// AgentVersionInfo reports whether the Agent Version exists and whether its Agent has a database configured for seed data.
-	AgentVersionInfo(ctx context.Context, id string) (exists, hasDatabase bool, err error)
+	// AgentInfo reports whether the Agent exists and whether its Agent has a database configured for seed data.
+	AgentInfo(ctx context.Context, id string) (exists, hasDatabase bool, err error)
 	FindCreation(ctx context.Context, requestKey string) (Creation, error)
 	// InsertRuns inserts every Run and its queue item in one transaction.
-	InsertRuns(ctx context.Context, agentVersionID, requestKey, requestSHA256 string, runs []NewRun) error
+	InsertRuns(ctx context.Context, agentID, requestKey, requestSHA256 string, runs []NewRun) error
 	GetRun(ctx context.Context, id string) (Run, error)
 	ListRuns(ctx context.Context, filter Filter, after *Cursor, limit int) ([]Run, error)
 	ListToolCalls(ctx context.Context, runID string) ([]ToolCall, error)
@@ -189,8 +189,8 @@ func NewService(store Store) (*Service, error) {
 // Create queues one Run per Test Case Revision and repetition. The Agent must have a database configured: the Dataset's
 // seed data is written there before the Run.
 func (service *Service) Create(ctx context.Context, key string, request Request) ([]string, error) {
-	if !ulidPattern.MatchString(request.AgentVersionID) {
-		return nil, invalid("agent_version_id must be a ULID")
+	if !ulidPattern.MatchString(request.AgentID) {
+		return nil, invalid("agent_id must be a ULID")
 	}
 	if len(request.TestCaseRevisionIDs) < 1 || len(request.TestCaseRevisionIDs) > maxRunsPerCreate {
 		return nil, invalid("test_case_revision_ids must contain 1-%d items", maxRunsPerCreate)
@@ -240,12 +240,12 @@ func (service *Service) Create(ctx context.Context, key string, request Request)
 			return nil, invalid("test case revision %s is DEPRECATED", item.RevisionID)
 		}
 	}
-	exists, hasDatabase, err := service.store.AgentVersionInfo(ctx, request.AgentVersionID)
+	exists, hasDatabase, err := service.store.AgentInfo(ctx, request.AgentID)
 	if err != nil {
 		return nil, err
 	}
 	if !exists {
-		return nil, invalid("agent version %s does not exist", request.AgentVersionID)
+		return nil, invalid("agent %s does not exist", request.AgentID)
 	}
 	if !hasDatabase {
 		return nil, ErrAgentDatabaseMissing
@@ -260,14 +260,14 @@ func (service *Service) Create(ctx context.Context, key string, request Request)
 			ids = append(ids, id)
 		}
 	}
-	err = service.store.InsertRuns(ctx, request.AgentVersionID, key, digest, runs)
+	err = service.store.InsertRuns(ctx, request.AgentID, key, digest, runs)
 	if err == nil {
 		return ids, nil
 	}
 	if !errors.Is(err, ErrDuplicate) {
 		return nil, err
 	}
-	// Either a concurrent replay of this key or a Run for the same Agent Version, case and repetition already exists.
+	// Either a concurrent replay of this key or a Run for the same Agent, case and repetition already exists.
 	replay, findErr := service.store.FindCreation(ctx, key)
 	if findErr == nil && replay.RequestSHA256 == digest {
 		return replay.RunIDs, nil
@@ -285,9 +285,9 @@ func (service *Service) Get(ctx context.Context, id string) (Run, error) {
 
 // List returns one page of Runs, newest first.
 func (service *Service) List(ctx context.Context, filter Filter, cursor string, limit int) ([]Run, string, error) {
-	if filter.AgentVersionID != "" && !ulidPattern.MatchString(filter.AgentVersionID) ||
+	if filter.AgentID != "" && !ulidPattern.MatchString(filter.AgentID) ||
 		filter.TestCaseRevisionID != "" && !ulidPattern.MatchString(filter.TestCaseRevisionID) {
-		return nil, "", invalid("agent_version_id and test_case_revision_id must be ULIDs")
+		return nil, "", invalid("agent_id and test_case_revision_id must be ULIDs")
 	}
 	if filter.Status != "" && !runStatuses[filter.Status] {
 		return nil, "", invalid("unknown status %q", filter.Status)
@@ -352,7 +352,7 @@ func (service *Service) AllEvaluations(ctx context.Context, filter EvalFilter, c
 	return items, encodeCursor(Cursor{CreatedAt: items[limit-1].CreatedAt, ID: items[limit-1].ID}), nil
 }
 
-// Benchmark aggregates the Runs of the given Test Case Revisions by Agent Version.
+// Benchmark aggregates the Runs of the given Test Case Revisions by Agent.
 func (service *Service) Benchmark(ctx context.Context, testCaseRevisionIDs []string) ([]BenchmarkEntry, error) {
 	if len(testCaseRevisionIDs) < 1 || len(testCaseRevisionIDs) > 100 {
 		return nil, invalid("test_case_revision_id must be given 1-100 times")

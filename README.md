@@ -102,11 +102,10 @@ registry and no longer reads `TARGET_MYSQL_ADMIN_DSN` or `TARGET_MYSQL_CA_FILE`.
 
 ### Registering an Agent
 
-An Agent is a stable identity; each Agent Version records the SSE chat endpoint, the name of the bearer-token secret
+An Agent is the entity under test; it records the SSE chat endpoint, the name of the bearer-token secret
 (`target_bearer_token_ref`, entered first through `PUT /api/v1/secrets/{name}`), the model, and the Tool Catalog
 (required for `DETERMINISTIC_CHAIN`, forbidden for `SESSION_LLM_ONLY`). Endpoints: `POST/GET /api/v1/agents`,
-`GET /api/v1/agents/{agentId}`, `POST/GET /api/v1/agents/{agentId}/versions`. Writes require `Idempotency-Key`.
-Migration `0011` adds the idempotency columns.
+`GET /api/v1/agents/{agentId}`. Writes require `Idempotency-Key`.
 
 ### Rotating the encryption key
 
@@ -245,11 +244,11 @@ Read-only `GET` endpoints list `/scenarios`, `/datasets` and `/test-cases` (newe
 
 ### Test Runs
 
-The API queues and reads Test Runs: `POST /api/v1/test-runs` with `{agent_version_id, test_case_revision_ids[], repetitions}` (one QUEUED Run and one `run` queue item per case and repetition, in one transaction; `Idempotency-Key` replays the batch), `GET /test-runs`, `/test-runs/{id}`, `/tool-calls`, `/evaluations`, `POST /test-runs/{id}/cancel`, `GET /evaluations` and `GET /benchmark?test_case_revision_id=...` (repeatable). A Test Case Revision already links its Scenario and Dataset, so there are no Test Suites or Snapshots (removed by migration 0016).
+The API queues and reads Test Runs: `POST /api/v1/test-runs` with `{agent_id, test_case_revision_ids[], repetitions}` (one QUEUED Run and one `run` queue item per case and repetition, in one transaction; `Idempotency-Key` replays the batch), `GET /test-runs`, `/test-runs/{id}`, `/tool-calls`, `/evaluations`, `POST /test-runs/{id}/cancel`, `GET /evaluations` and `GET /benchmark?test_case_revision_id=...` (repeatable). A Test Case Revision already links its Scenario and Dataset, so there are no Test Suites or Snapshots (removed by migration 0016).
 
 ### Agent database and seed data
 
-The Dataset stays on the platform. An **Agent** (not a version: the account is unique to that Agent and cannot be shared) carries the database that receives test data (host, port, database name, account, password secret name, TLS), configured when the Agent is created and stored as a Database Profile referenced by `agent.database_profile_id` (migration 0017). A Run **requires** it: `POST /test-runs` for an Agent without a database is refused with `409 AGENT_DATABASE_NOT_CONFIGURED`. Before a Run the Dataset's schema and seed data are written into a `run_<ULID>` database on that server and dropped afterwards; credentials are never sent to the Agent, which is only told the database name in the prompt. Agent Versions only describe how to call the Agent (endpoint, model, Tools) so that results stay comparable across releases.
+The Dataset stays on the platform. An **Agent** carries the database that receives test data (host, port, database name, account, password secret name, TLS), configured when the Agent is created and stored as a Database Profile referenced by `agent.database_profile_id`. A Run **requires** it: `POST /test-runs` for an Agent without a database is refused with `409 AGENT_DATABASE_NOT_CONFIGURED`. Before a Run the Dataset's schema and seed data are written into a `run_<ULID>` database on that server and dropped afterwards; credentials are never sent to the Agent, which is only told the database name in the prompt. The Agent's behavior (endpoint, model, Tools) is recorded on the Agent itself so that results stay comparable.
 
 **Validation MySQL** (formerly "Target MySQL"; `/api/v1/validation-mysql`, table `validation_mysql`, migration 0019) is the platform's own server, shown in the UI under 系统 → 校验用 MySQL. It is not part of any Agent: it only executes and validates a Dataset's schema and seed SQL while the Dataset is *generated* (`validation_db_ids` in a generation request). Runs do not reference it (migration 0018 drops `test_run.target_mysql_id`). The Dataset's `schema_sql` / `seed_sql` are the initial SQL: at the start of a Run the platform executes exactly those statements on the Agent's database; nothing is exported from or imported through the platform's database, so there is no cross-engine conversion.
 
@@ -290,7 +289,7 @@ uses the worker's configured Generation alias; the active flag is only recorded,
 ## Agent Tool Discovery
 
 `POST /api/v1/agent-tool-discovery` with `{"chat_endpoint", "target_bearer_token_ref"}` calls the Target Agent's paginated
-`GET /v1/tools` and returns `{"tools": [...]}` (validated like `tool_catalog`) so testers can pre-fill an Agent Version's
+`GET /v1/tools` and returns `{"tools": [...]}` (validated like `tool_catalog`) so testers can pre-fill an Agent's
 tool catalog. Failures return 502 `TARGET_TOOL_LIST_FAILED`.
 
 ## End-to-end Tests
@@ -339,4 +338,4 @@ The menu is organised by what you manage:
 - **测试运行** (Test runs): the "运行测试" button opens a dialog with a searchable dropdown of test cases (newest 10 by default, keyword search over id and content),
   plus an Agent and version, and starts the runs directly (no suite or snapshot). Test case rows also have a "运行测试" button. Backed by
   `GET /api/v1/{scenario,dataset,test-case}-revisions?q=&limit=&cursor=` and `POST /api/v1/test-runs`.
-- **基准对比**: pick test cases to compare the Agent versions that ran them.
+- **基准对比**: pick test cases to compare the Agents that ran them.

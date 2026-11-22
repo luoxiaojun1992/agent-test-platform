@@ -116,10 +116,18 @@ test('admin console: configure, run, evaluate, re-evaluate and benchmark with mo
   await expect(page.getByRole('table', { name: '测试用例列表' }).locator('tbody tr')).toHaveCount(3)
   await shot(page, 'test-cases-listed')
 
-  // Agent + Version, including Tool discovery through the Agent's own GET /v1/tools.
+  // Agent under test, including Tool discovery through the Agent's own GET /v1/tools.
   await open(page, 'Agent 管理')
   await page.getByRole('button', { name: '新建 Agent' }).click()
   await page.getByLabel('Agent 名称').fill('mock-agent')
+  await page.getByLabel('Agent 地址').fill('http://127.0.0.1:18082')
+  await page.getByLabel('Token 凭据名').fill('agent-token')
+  await page.getByLabel('被测模型').fill('mock-agent-v1')
+  await page.getByLabel('Tool 评估模式').selectOption('DETERMINISTIC_CHAIN')
+  await page.getByRole('button', { name: '从 Agent 读取 Tool 列表' }).click()
+  await expect(page.getByText(/共 [1-9]\d* 个 Tool/)).toBeVisible()
+  await shot(page, 'agent-tools-discovered')
+  await page.getByLabel('Tool 评估模式').selectOption('SESSION_LLM_ONLY')
   // The Agent's own database is configured on the Agent itself; it only receives the dataset's seed data and is never sent to the Agent.
   await page.getByLabel('数据库主机').fill('127.0.0.1')
   await page.getByLabel('数据库端口').fill('3331')
@@ -128,23 +136,10 @@ test('admin console: configure, run, evaluate, re-evaluate and benchmark with mo
   await page.getByLabel('数据库密码凭据名').fill('db-admin-password')
   await shot(page, 'agent-database')
   await page.getByRole('dialog').getByRole('button', { name: '创建', exact: true }).click()
-  const agentRow = page.getByRole('row', { name: /mock-agent/ })
-  await expect(agentRow).toBeVisible()
-  await agentRow.getByRole('button', { name: '新建版本' }).click()
-  await page.getByLabel('版本号').fill('v1')
-  await page.getByLabel('Agent 地址').fill('http://127.0.0.1:18082')
-  await page.getByLabel('Token 凭据名').fill('agent-token')
-  await page.getByLabel('被测模型').fill('mock-agent-v1')
-  await page.getByLabel('Tool 评估模式').selectOption('DETERMINISTIC_CHAIN')
-  await page.getByRole('button', { name: '从 Agent 读取 Tool 列表' }).click()
-  await expect(page.getByText(/共 [1-9]\d* 个 Tool/)).toBeVisible()
-  await shot(page, 'agent-version-tools-discovered')
-  await page.getByLabel('Tool 评估模式').selectOption('SESSION_LLM_ONLY')
-  await page.getByRole('dialog').getByRole('button', { name: '创建版本' }).click()
-  await expect(page.getByRole('table', { name: '版本列表' }).getByText('v1', { exact: true })).toBeVisible()
-  await shot(page, 'agent-version-created')
+  await expect(page.getByRole('row', { name: /mock-agent/ })).toBeVisible()
+  await shot(page, 'agent-created')
 
-  // Running tests is one action on the test run page: pick cases (newest 10 by default, searchable) and an Agent version.
+  // Running tests is one action on the test run page: pick cases (newest 10 by default, searchable) and an Agent.
   await open(page, '测试运行')
   await page.getByRole('button', { name: '运行测试' }).click()
   const runDialog = page.getByRole('dialog', { name: '运行测试' })
@@ -158,8 +153,7 @@ test('admin console: configure, run, evaluate, re-evaluate and benchmark with mo
   await expect(page.getByRole('listbox', { name: '测试用例选项' }).getByRole('option')).toHaveCount(1)
   await shot(page, 'run-tests-dropdown-search')
   await page.getByRole('listbox', { name: '测试用例选项' }).getByRole('option').first().click()
-  await runDialog.getByLabel('选择 Agent', { exact: true }).selectOption({ label: 'mock-agent' })
-  await runDialog.getByLabel('选择 Agent 版本').selectOption({ index: 1 })
+  await runDialog.getByLabel('选择 Agent', { exact: true }).selectOption({ index: 1 })
   await expect(runDialog.getByText('种子数据会写入该 Agent 配置的数据库')).toBeVisible()
   await expect(runDialog.getByRole('button', { name: /运行 1 个用例/ })).toBeEnabled()
   await shot(page, 'run-tests-dialog-ready')
@@ -203,7 +197,7 @@ test('admin console: configure, run, evaluate, re-evaluate and benchmark with mo
   await expect(page.getByRole('table', { name: '评测尝试' }).locator('tbody tr')).toHaveCount(1)
   await shot(page, 'original-run-untouched')
 
-  // Benchmark compares Agent versions on the picked test cases.
+  // Benchmark compares Agents on the picked test cases.
   await open(page, '基准对比')
   await page.getByLabel('测试用例', { exact: true }).fill('order O2')
   await expect(page.getByRole('listbox', { name: '测试用例选项' }).getByRole('option')).toHaveCount(1)

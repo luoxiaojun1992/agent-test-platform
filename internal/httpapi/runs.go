@@ -76,7 +76,7 @@ func (server *Server) listRuns(writer http.ResponseWriter, request *http.Request
 		return
 	}
 	query := request.URL.Query()
-	filter := run.Filter{AgentVersionID: query.Get("agent_version_id"), TestCaseRevisionID: query.Get("test_case_revision_id"), Status: query.Get("status")}
+	filter := run.Filter{AgentID: query.Get("agent_id"), TestCaseRevisionID: query.Get("test_case_revision_id"), Status: query.Get("status")}
 	items, next, err := server.runService.List(request.Context(), filter, cursor, limit)
 	if err != nil {
 		writeRunError(writer, err)

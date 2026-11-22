@@ -23,7 +23,7 @@ type DiscoveryInput struct {
 	TargetBearerTokenRef string `json:"target_bearer_token_ref"`
 }
 
-// Discovery lets testers pull the Tool list from an Agent before registering a Version.
+// Discovery lets testers pull the Tool list from an Agent before registering it.
 type Discovery struct {
 	secrets SecretResolver
 	fetcher ToolFetcher
@@ -49,7 +49,7 @@ func (discovery *Discovery) DiscoverTools(ctx context.Context, input DiscoveryIn
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrDiscoveryFailed, err)
 	}
-	check := VersionInput{Version: "v", ChatEndpoint: input.ChatEndpoint, TargetBearerTokenRef: input.TargetBearerTokenRef,
+	check := AgentInput{Name: "x", ChatEndpoint: input.ChatEndpoint, TargetBearerTokenRef: input.TargetBearerTokenRef,
 		TargetModel: "m", ContractVersion: ContractVersion, ToolEvaluationMode: ModeDeterministicChain, ToolCatalog: tools}
 	if err := check.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrDiscoveryFailed, err)

@@ -1,7 +1,7 @@
 {
   "schema_version": "1.1",
   "description": "Generate tests for order cancellation.",
-  "target_agent_version_id": null,
+  "target_agent_id": null,
   "generate_dataset": true,
   "database_profile_id": null,
   "domain": null,

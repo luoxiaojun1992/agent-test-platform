@@ -1,6 +1,6 @@
-// Package agentregistry stores Agents and their immutable Agent Versions (docs/architecture.md section 16).
-// A version records the SSE chat endpoint, the name of the bearer-token secret, and the optional Tool Catalog.
-// The token itself is never part of a record.
+// Package agentregistry stores Agents under test (docs/architecture.md section 16).
+// An Agent records the SSE chat endpoint, the name of the bearer-token secret, the model, and the optional Tool Catalog.
+// The token itself is never part of a stored record.
 package agentregistry
 
 import (
@@ -33,7 +33,7 @@ var (
 	ErrInvalidInput        = errors.New("agent request is invalid")
 	ErrSecretNotFound      = errors.New("target bearer token secret is not found; enter it on the Credentials page first")
 	ErrDatabaseCheckFailed = errors.New("the Agent database check failed")
-	ErrConflict            = errors.New("an Agent with this name or an Agent Version with this version already exists")
+	ErrConflict            = errors.New("an Agent with this name already exists")
 	ErrIdempotencyConflict = errors.New("Idempotency-Key was already used for a different request")
 	ErrDuplicate           = errors.New("agent violates a unique key")
 	ErrNotFound            = errors.New("agent is not found")
@@ -57,27 +57,10 @@ type AgentInput struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 	// DatabaseProfileID is the Agent's own database. The platform uses it only to write test data; it is never sent to the Agent.
-	DatabaseProfileID *string `json:"database_profile_id"`
-}
-
-// Agent is a stable Agent identity.
-type Agent struct {
-	ID string `json:"id"`
-	AgentInput
-	CreatedAt time.Time `json:"created_at"`
-}
-
-// ToolDefinition describes one Tool the Agent may call.
-type ToolDefinition struct {
-	Name        string          `json:"name"`
-	Description string          `json:"description"`
-	InputSchema json.RawMessage `json:"input_schema"`
-}
-
-// VersionInput is the body of POST /agents/{id}/versions.
-type VersionInput struct {
-	Version              string           `json:"version"`
-	ChatEndpoint         string           `json:"chat_endpoint"`
+	DatabaseProfileID *string `json:"database_profile_id,omitempty"`
+	// ChatEndpoint is the base URL the platform calls for chat and tool discovery.
+	ChatEndpoint string `json:"chat_endpoint"`
+	// TargetBearerTokenRef names a stored secret; the token itself is never part of a request body.
 	TargetBearerTokenRef string           `json:"target_bearer_token_ref"`
 	TargetModel          string           `json:"target_model"`
 	ContractVersion      string           `json:"contract_version"`
@@ -85,18 +68,27 @@ type VersionInput struct {
 	ToolCatalog          []ToolDefinition `json:"tool_catalog"`
 }
 
-// Version is a stored Agent Version. It omits the token reference.
-type Version struct {
-	ID                   string           `json:"id"`
-	AgentID              string           `json:"agent_id"`
-	Version              string           `json:"version"`
-	ChatEndpoint         string           `json:"chat_endpoint"`
-	TargetModel          string           `json:"target_model"`
-	ContractVersion      string           `json:"contract_version"`
-	ToolEvaluationMode   string           `json:"tool_evaluation_mode"`
-	ToolCatalog          []ToolDefinition `json:"tool_catalog"`
-	CreatedAt            time.Time        `json:"created_at"`
-	TargetBearerTokenRef string           `json:"-"`
+// Agent is a stored Agent under test. It omits the token reference.
+type Agent struct {
+	ID                 string           `json:"id"`
+	Name               string           `json:"name"`
+	Description        string           `json:"description,omitempty"`
+	DatabaseProfileID  *string          `json:"database_profile_id,omitempty"`
+	ChatEndpoint       string           `json:"chat_endpoint"`
+	TargetModel        string           `json:"target_model"`
+	ContractVersion    string           `json:"contract_version"`
+	ToolEvaluationMode string           `json:"tool_evaluation_mode"`
+	ToolCatalog        []ToolDefinition `json:"tool_catalog"`
+	CreatedAt          time.Time        `json:"created_at"`
+	// TargetBearerTokenRef is stored but never serialized back to clients.
+	TargetBearerTokenRef string `json:"-"`
+}
+
+// ToolDefinition describes one Tool the Agent may call.
+type ToolDefinition struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	InputSchema json.RawMessage `json:"input_schema"`
 }
 
 // Validate checks the request without touching the database.
@@ -111,14 +103,6 @@ func (input AgentInput) Validate() error {
 		if _, err := ulid.ParseStrict(*input.DatabaseProfileID); err != nil {
 			return invalid("database_profile_id must be a ULID")
 		}
-	}
-	return nil
-}
-
-// Validate checks the request without touching the database.
-func (input VersionInput) Validate() error {
-	if n := len([]rune(input.Version)); n < 1 || n > 128 {
-		return invalid("version must contain 1-128 characters")
 	}
 	parsed, err := url.Parse(input.ChatEndpoint)
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || len(input.ChatEndpoint) > 2048 {
@@ -172,29 +156,19 @@ type AgentRecord struct {
 	ConfigSHA256   string
 }
 
-// VersionRecord is a Version as stored, with the replay-detection data.
-type VersionRecord struct {
-	Version        Version
-	IdempotencyKey string
-	ConfigSHA256   string
-}
-
 // Cursor is an opaque list position.
 type Cursor struct {
 	CreatedAt time.Time
 	ID        string
 }
 
-// Store persists Agents and Versions. The MySQL implementation lives in the storage layer.
+// Store persists Agents. The MySQL implementation lives in the storage layer.
 type Store interface {
 	InsertAgent(ctx context.Context, record AgentRecord) (Agent, error)
 	FindAgentByIdempotencyKey(ctx context.Context, key string) (AgentRecord, error)
 	GetAgent(ctx context.Context, id string) (Agent, error)
 	ListAgents(ctx context.Context, after *Cursor, limit int) ([]Agent, error)
-	InsertVersion(ctx context.Context, record VersionRecord) (Version, error)
-	FindVersionByIdempotencyKey(ctx context.Context, key string) (VersionRecord, error)
-	ListVersions(ctx context.Context, agentID string, after *Cursor, limit int) ([]Version, error)
-	// DatabaseProfileExists and AgentExists support reference checks.
+	// DatabaseProfileExists supports reference checks.
 	DatabaseProfileExists(ctx context.Context, id string) (bool, error)
 }
 
@@ -209,7 +183,7 @@ type SecretChecker interface {
 	Exists(ctx context.Context, name string) (bool, error)
 }
 
-// Service manages Agents and Agent Versions.
+// Service manages Agents under test.
 type Service struct {
 	store   Store
 	secrets SecretChecker
@@ -227,7 +201,7 @@ func NewService(store Store, secrets SecretChecker) (*Service, error) {
 	return &Service{store: store, secrets: secrets}, nil
 }
 
-// CreateAgent stores a new Agent. Replaying a key with the same request returns the stored Agent.
+// CreateAgent stores a new Agent under test. Replaying a key with the same request returns the stored Agent.
 func (service *Service) CreateAgent(ctx context.Context, key string, input AgentInput) (Agent, error) {
 	if err := input.Validate(); err != nil {
 		return Agent{}, err
@@ -246,11 +220,22 @@ func (service *Service) CreateAgent(ctx context.Context, key string, input Agent
 			}
 		}
 	}
+	exists, err := service.secrets.Exists(ctx, input.TargetBearerTokenRef)
+	if err != nil {
+		return Agent{}, fmt.Errorf("check bearer token secret: %w", err)
+	}
+	if !exists {
+		return Agent{}, ErrSecretNotFound
+	}
 	digest, err := digestOf(input)
 	if err != nil {
 		return Agent{}, err
 	}
-	record := AgentRecord{Agent: Agent{ID: ulid.Make().String(), AgentInput: input}, IdempotencyKey: key, ConfigSHA256: digest}
+	record := AgentRecord{Agent: Agent{
+		ID: ulid.Make().String(), Name: input.Name, Description: input.Description, DatabaseProfileID: input.DatabaseProfileID,
+		ChatEndpoint: input.ChatEndpoint, TargetModel: input.TargetModel, ContractVersion: input.ContractVersion,
+		ToolEvaluationMode: input.ToolEvaluationMode, ToolCatalog: input.ToolCatalog, TargetBearerTokenRef: input.TargetBearerTokenRef,
+	}, IdempotencyKey: key, ConfigSHA256: digest}
 	stored, err := service.store.InsertAgent(ctx, record)
 	if err == nil {
 		return stored, nil
@@ -288,77 +273,6 @@ func (service *Service) ListAgents(ctx context.Context, cursor string, limit int
 	items, err := service.store.ListAgents(ctx, after, limit+1)
 	if err != nil {
 		return nil, "", fmt.Errorf("list Agents: %w", err)
-	}
-	if len(items) <= limit {
-		return items, "", nil
-	}
-	items = items[:limit]
-	last := items[limit-1]
-	return items, encodeCursor(Cursor{CreatedAt: last.CreatedAt, ID: last.ID}), nil
-}
-
-// CreateVersion stores a new Agent Version after checking the secret reference.
-func (service *Service) CreateVersion(ctx context.Context, agentID, key string, input VersionInput) (Version, error) {
-	if _, err := service.GetAgent(ctx, agentID); err != nil {
-		return Version{}, err
-	}
-	if err := input.Validate(); err != nil {
-		return Version{}, err
-	}
-	exists, err := service.secrets.Exists(ctx, input.TargetBearerTokenRef)
-	if err != nil {
-		return Version{}, fmt.Errorf("check bearer token secret: %w", err)
-	}
-	if !exists {
-		return Version{}, ErrSecretNotFound
-	}
-	digest, err := digestOf(struct {
-		AgentID string `json:"agent_id"`
-		VersionInput
-	}{agentID, input})
-	if err != nil {
-		return Version{}, err
-	}
-	record := VersionRecord{
-		Version: Version{
-			ID: ulid.Make().String(), AgentID: agentID, Version: input.Version, ChatEndpoint: input.ChatEndpoint,
-			TargetModel: input.TargetModel, ContractVersion: input.ContractVersion, ToolEvaluationMode: input.ToolEvaluationMode,
-			ToolCatalog: input.ToolCatalog, TargetBearerTokenRef: input.TargetBearerTokenRef,
-		},
-		IdempotencyKey: key, ConfigSHA256: digest,
-	}
-	stored, err := service.store.InsertVersion(ctx, record)
-	if err == nil {
-		return stored, nil
-	}
-	if !errors.Is(err, ErrDuplicate) {
-		return Version{}, err
-	}
-	replay, findErr := service.store.FindVersionByIdempotencyKey(ctx, key)
-	if findErr == nil {
-		if replay.ConfigSHA256 != digest {
-			return Version{}, ErrIdempotencyConflict
-		}
-		return replay.Version, nil
-	}
-	if !errors.Is(findErr, ErrNotFound) {
-		return Version{}, findErr
-	}
-	return Version{}, ErrConflict
-}
-
-// ListVersions returns one page of an Agent's Versions, newest first.
-func (service *Service) ListVersions(ctx context.Context, agentID, cursor string, limit int) ([]Version, string, error) {
-	if _, err := service.GetAgent(ctx, agentID); err != nil {
-		return nil, "", err
-	}
-	after, err := pageArgs(cursor, limit)
-	if err != nil {
-		return nil, "", err
-	}
-	items, err := service.store.ListVersions(ctx, agentID, after, limit+1)
-	if err != nil {
-		return nil, "", fmt.Errorf("list Agent Versions: %w", err)
 	}
 	if len(items) <= limit {
 		return items, "", nil
