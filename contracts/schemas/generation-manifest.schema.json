@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-test-platform.local/schemas/generation-manifest.schema.json",
+  "title": "Generation Manifest",
+  "description": "Review record of one completed Generation Pipeline (docs/architecture.md section 6.3). Assembled at the TEST_CASES Job's publish from durable rows only.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "pipeline_id", "request", "generator_config_sha256", "stages", "artifacts"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "pipeline_id": {"$ref": "#/$defs/id"},
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request_sha256", "description_tokens", "tokenizer_version", "config"],
+      "properties": {
+        "request_sha256": {"$ref": "#/$defs/sha256"},
+        "description_tokens": {"type": "integer", "minimum": 0},
+        "tokenizer_version": {"const": "conservative-estimator/v1"},
+        "config": {"type": "object"}
+      }
+    },
+    "generator_config_sha256": {"$ref": "#/$defs/sha256"},
+    "stages": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "prefixItems": [
+        {"$ref": "#/$defs/stage", "properties": {"job_kind": {"const": "SCENARIO"}}},
+        {"$ref": "#/$defs/stage", "properties": {"job_kind": {"const": "DATASET"}}},
+        {"$ref": "#/$defs/stage", "properties": {"job_kind": {"const": "TEST_CASES"}}}
+      ],
+      "items": false
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scenario", "dataset", "test_cases"],
+      "properties": {
+        "scenario": {"$ref": "#/$defs/revision"},
+        "dataset": {"$ref": "#/$defs/revision"},
+        "test_cases": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ordinal", "revision_id", "sha256"],
+            "properties": {
+              "ordinal": {"type": "integer", "minimum": 1, "maximum": 20},
+              "revision_id": {"$ref": "#/$defs/id"},
+              "sha256": {"$ref": "#/$defs/sha256"}
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"},
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "revision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision_id", "sha256"],
+      "properties": {
+        "revision_id": {"$ref": "#/$defs/id"},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["job_kind", "job_id", "provenance"],
+      "properties": {
+        "job_kind": {"enum": ["SCENARIO", "DATASET", "TEST_CASES"]},
+        "job_id": {"$ref": "#/$defs/id"},
+        "provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schema_version", "job_kind", "producer", "critic"],
+          "properties": {
+            "schema_version": {"const": "1.0"},
+            "job_kind": {"enum": ["SCENARIO", "DATASET", "TEST_CASES"]},
+            "producer": {"type": "object"},
+            "critic": {"oneOf": [{"type": "null"}, {"type": "object"}]}
+          }
+        }
+      }
+    }
+  }
+}

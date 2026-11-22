@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0",
+  "models": [
+    {
+      "id": "mock-agent-v1",
+      "display_name": "Mock Agent v1",
+      "capabilities": ["CHAT", "SSE", "TOOLS", "KNOWLEDGE"],
+      "context_window": 32768,
+      "max_output_tokens": 4096
+    }
+  ]
+}

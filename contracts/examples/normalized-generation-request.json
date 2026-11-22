@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.1",
+  "description": "Generate tests for order cancellation.",
+  "target_agent_version_id": null,
+  "generate_dataset": true,
+  "database_profile_id": null,
+  "domain": null,
+  "agent_mode": "TASK",
+  "capabilities": null,
+  "difficulty": null,
+  "test_case_count": 10,
+  "coverage": null,
+  "validation_db_ids": ["0b6d6f3e-2c4a-4f8e-9a1b-7c5d3e2f1a90"],
+  "auto_activate": true,
+  "require_manual_review": false
+}

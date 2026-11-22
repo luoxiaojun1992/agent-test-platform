@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-test-platform.local/schemas/target-tool-list-response.schema.json",
+  "title": "Target Platform Tool Definition List Response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "tools", "next_cursor"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "tools": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "description", "input_schema"],
+        "properties": {
+          "name": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,127}$"},
+          "description": {"type": "string", "minLength": 1, "maxLength": 1000},
+          "input_schema": {"type": "object"}
+        }
+      }
+    },
+    "next_cursor": {"type": ["string", "null"], "minLength": 1, "maxLength": 512}
+  }
+}

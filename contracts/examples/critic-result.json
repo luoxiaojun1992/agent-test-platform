@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "decision": "ACCEPT",
+  "coverage": {
+    "requested": ["NORMAL", "EDGE_CASE", "AMBIGUOUS"],
+    "covered": ["NORMAL", "EDGE_CASE", "AMBIGUOUS"]
+  },
+  "case_findings": [],
+  "package_findings": [],
+  "confidence": 0.91
+}

@@ -1,0 +1,176 @@
+openapi: 3.1.0
+info:
+  title: Agent Test Platform Target Compatibility API
+  version: 1.0.0
+  description: Bearer-authenticated API implemented by a target platform under test.
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+paths:
+  /v1/models:
+    get:
+      operationId: listTargetModels
+      responses:
+        '200':
+          description: Models available for Target chat execution
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/target-model-list-response.schema.json'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/tools:
+    get:
+      operationId: listTargetTools
+      description: Paginated Tool definitions the Agent supports. The Agent alone decides which Tools exist and whether to call them.
+      parameters:
+        - name: cursor
+          in: query
+          schema: {type: string, maxLength: 512}
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 50}
+      responses:
+        '200':
+          description: One page of Tool definitions
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/target-tool-list-response.schema.json'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/chat:
+    post:
+      operationId: streamTargetChat
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/ContractVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/target-chat-request.schema.json'
+      responses:
+        '200':
+          description: SSE stream; each data object validates against target-chat-event.schema.json
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/knowledge/documents:
+    post:
+      operationId: uploadTargetKnowledgeText
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/ContractVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/target-knowledge-upload-request.schema.json'
+      responses:
+        '202':
+          description: Text accepted for asynchronous indexing
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/target-knowledge-upload-response.schema.json'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/knowledge/documents/{documentId}:
+    get:
+      operationId: getTargetKnowledgeStatus
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+        - $ref: '#/components/parameters/ContractVersion'
+      responses:
+        '200':
+          description: Current asynchronous indexing status
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/target-knowledge-status-response.schema.json'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Knowledge document not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+    ContractVersion:
+      name: X-ATP-Contract-Version
+      in: header
+      required: true
+      schema:
+        const: '1.0'
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Missing or invalid Target Bearer token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Error:
+      type: object
+      additionalProperties: false
+      required: [code, message, retryable]
+      properties:
+        code:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]{1,63}$'
+        message:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        retryable:
+          type: boolean

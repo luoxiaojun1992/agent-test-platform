@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-test-platform.local/schemas/validation-mysql-request.schema.json",
+  "title": "Register validation MySQL Request",
+  "description": "A validation MySQL instance the platform may use to validate Datasets and host Run databases. admin_password_secret_name names a credential entered on the Credentials page; the password itself is never part of the request. ca_certificate_pem is optional public material for VERIFY_IDENTITY (docs/architecture.md section 16.5).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "host", "port", "admin_username", "admin_password_secret_name", "tls_mode"],
+  "properties": {
+    "name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"},
+    "host": {"type": "string", "minLength": 1, "maxLength": 255},
+    "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+    "admin_username": {"type": "string", "pattern": "^[A-Za-z0-9_]{1,32}$"},
+    "admin_password_secret_name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,127}$"},
+    "tls_mode": {"enum": ["DISABLED_LOCAL_ONLY", "VERIFY_IDENTITY"]},
+    "ca_certificate_pem": {"type": "string", "maxLength": 16384}
+  }
+}

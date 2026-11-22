@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-test-platform.local/schemas/database-profile-request.schema.json",
+  "title": "Create Database Profile Request",
+  "description": "A validation MySQL reference data source. password_secret_ref names a Secret Reference; the plaintext password is never part of the request (docs/technical/06-sandbox-and-security.md section 8).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "engine", "host", "port", "database", "username", "password_secret_ref", "tls_mode", "snapshot_mode", "snapshot_timeout_seconds"],
+  "properties": {
+    "name": {"type": "string", "minLength": 1, "maxLength": 255},
+    "engine": {"const": "MYSQL"},
+    "host": {"type": "string", "minLength": 1, "maxLength": 255},
+    "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+    "database": {"type": "string", "minLength": 1, "maxLength": 128},
+    "username": {"type": "string", "minLength": 1, "maxLength": 128},
+    "password_secret_ref": {"type": "string", "minLength": 1, "maxLength": 512},
+    "tls_mode": {"enum": ["VERIFY_IDENTITY", "DISABLED_LOCAL_ONLY"]},
+    "snapshot_mode": {"enum": ["SCHEMA_ONLY", "SCHEMA_AND_DATA"]},
+    "snapshot_timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 300},
+    "ca_certificate_pem": {"type": "string", "maxLength": 16384}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"tls_mode": {"const": "DISABLED_LOCAL_ONLY"}}, "required": ["tls_mode"]},
+      "then": {"not": {"required": ["ca_certificate_pem"]}}
+    }
+  ]
+}

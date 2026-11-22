@@ -1,0 +1,16 @@
+{
+  "description": "为电商客服 Agent 生成订单取消测试，覆盖已付款未发货、已发货和请求不明确的情况。",
+  "target_agent_version_id": "01K4Z6Y7X8W9V0T1S2R3Q4P5N6",
+  "generate_dataset": true,
+  "domain": "e-commerce",
+  "agent_mode": "TASK",
+  "capabilities": ["MYSQL_QUERY", "MYSQL_EXECUTE"],
+  "difficulty": {
+    "min": "MEDIUM",
+    "max": "HARD"
+  },
+  "test_case_count": 3,
+  "coverage": ["NORMAL", "EDGE_CASE", "AMBIGUOUS"],
+  "validation_db_ids": ["0b6d6f3e-2c4a-4f8e-9a1b-7c5d3e2f1a90"],
+  "auto_activate": true
+}

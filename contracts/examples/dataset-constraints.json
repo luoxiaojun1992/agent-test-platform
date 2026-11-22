@@ -1,0 +1,16 @@
+{
+  "version": "1.0",
+  "checks": [
+    {
+      "id": "order-status-is-valid",
+      "phases": ["AFTER_SEED", "AFTER_AGENT"],
+      "query": "SELECT id FROM orders WHERE status NOT IN ('PAID', 'SHIPPED', 'CANCELLED') ORDER BY id",
+      "expectation": {
+        "type": "ROW_COUNT",
+        "equals": 0
+      },
+      "critical": true,
+      "rule_id": "cancel-paid-order"
+    }
+  ]
+}

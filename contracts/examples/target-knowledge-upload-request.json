@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "request_id": "01K4Z6Y7X8W9V0T1S2R3Q4P5N6",
+  "name": "order-cancellation-policy.txt",
+  "text": "Paid but unshipped orders may be cancelled. Shipped orders cannot be cancelled.",
+  "content_sha256": "9a5200e3ef2f6287d75dcd23106a8cde39b596ce90395912827d9268ba0a2a99",
+  "indexing_deadline": "2026-09-15T07:10:00Z",
+  "expires_at": "2026-09-16T07:00:00Z",
+  "metadata": {
+    "source": "test-fixture",
+    "content_type": "text/plain"
+  }
+}

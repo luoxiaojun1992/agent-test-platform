@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "tools": [
+    {
+      "name": "mysql.query",
+      "description": "Run a read-only SQL query against the Agent's own database.",
+      "input_schema": {"type": "object", "required": ["sql"], "properties": {"sql": {"type": "string"}}}
+    }
+  ],
+  "next_cursor": null
+}

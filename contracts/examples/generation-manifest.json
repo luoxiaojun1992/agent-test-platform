@@ -1,0 +1,146 @@
+{
+  "schema_version": "1.0",
+  "pipeline_id": "01K4Z6Y7X8W9V0T1S2R3Q4P5N9",
+  "request": {
+    "request_sha256": "332b10ca937e16a7073dc4c95a1f1fd3e2435b90e1b6f46e1082b4cb48061e8b",
+    "description_tokens": 58,
+    "tokenizer_version": "conservative-estimator/v1",
+    "config": {
+      "description": "Generate order cancellation tests.",
+      "test_case_count": 3,
+      "generate_dataset": true,
+      "auto_activate": true,
+      "require_manual_review": false
+    }
+  },
+  "generator_config_sha256": "14dd26903aa5f4efae10ab601d32f5a47b41c5f4e47284033a63f0972d9e30ef",
+  "stages": [
+    {
+      "job_kind": "SCENARIO",
+      "job_id": "01K4Z6Y7X8W9V0T1S2R3Q4P5NA",
+      "provenance": {
+        "schema_version": "1.0",
+        "job_kind": "SCENARIO",
+        "producer": {
+          "source": "LLM",
+          "schema": "schemas/scenario.schema.json",
+          "prompt_version": "scenario-generator/v1",
+          "temperature": 0.2,
+          "max_output_tokens": 4096,
+          "seed": null,
+          "source_sha256": "332b10ca937e16a7073dc4c95a1f1fd3e2435b90e1b6f46e1082b4cb48061e8b",
+          "provider": "openai",
+          "model": "gpt-4.1",
+          "provider_request_id": "req_scenario_1",
+          "raw_response_sha256": "98e9b5a943b5803b9868d99959d15110c2e7bdc2b192285cb79cfce429a81019",
+          "input_tokens": 1200,
+          "output_tokens": 800,
+          "valid": true
+        },
+        "critic": {
+          "source": "LLM",
+          "provider": "openai",
+          "model": "gpt-4.1-mini",
+          "prompt_version": "semantic-critic/v1",
+          "temperature": 0,
+          "max_output_tokens": 2048,
+          "seed": null,
+          "provider_request_id": "req_critic_1",
+          "raw_response_sha256": "d4444f5d0de49860c5f3eff97cfe975b8dc08e5eeff9ad796abaa9f09e298ad9",
+          "input_tokens": 900,
+          "output_tokens": 120,
+          "result_sha256": "5822d5ab604983ff97a8057645231280e35bf0f5c8a08101b6785a995a11090d"
+        }
+      }
+    },
+    {
+      "job_kind": "DATASET",
+      "job_id": "01K4Z6Y7X8W9V0T1S2R3Q4P5NB",
+      "provenance": {
+        "schema_version": "1.0",
+        "job_kind": "DATASET",
+        "producer": {
+          "source": "LLM",
+          "schema": "schemas/dataset-metadata.schema.json",
+          "prompt_version": "dataset-generator/v1",
+          "temperature": 0.2,
+          "max_output_tokens": 8192,
+          "seed": null,
+          "source_sha256": "332b10ca937e16a7073dc4c95a1f1fd3e2435b90e1b6f46e1082b4cb48061e8b",
+          "scenario_sha256": "878742d5aac4461affad2ed4bcb668c161411a8d5f26c26bd4262114450ac058",
+          "provider": "openai",
+          "model": "gpt-4.1",
+          "provider_request_id": "req_dataset_1",
+          "raw_response_sha256": "337128d66801bcd78670b6e9ff24c170b06a0f5073b57f7fbd0935da497c5fbc",
+          "input_tokens": 2400,
+          "output_tokens": 3100,
+          "valid": true
+        },
+        "critic": {
+          "source": "LLM",
+          "provider": "openai",
+          "model": "gpt-4.1-mini",
+          "prompt_version": "semantic-critic/v1",
+          "temperature": 0,
+          "max_output_tokens": 2048,
+          "seed": null,
+          "provider_request_id": "req_critic_2",
+          "raw_response_sha256": "d4444f5d0de49860c5f3eff97cfe975b8dc08e5eeff9ad796abaa9f09e298ad9",
+          "input_tokens": 1800,
+          "output_tokens": 140,
+          "result_sha256": "5822d5ab604983ff97a8057645231280e35bf0f5c8a08101b6785a995a11090d"
+        }
+      }
+    },
+    {
+      "job_kind": "TEST_CASES",
+      "job_id": "01K4Z6Y7X8W9V0T1S2R3Q4P5NC",
+      "provenance": {
+        "schema_version": "1.0",
+        "job_kind": "TEST_CASES",
+        "producer": {
+          "source": "LLM",
+          "provider": "openai",
+          "model": "gpt-4.1",
+          "prompt_version": "test-case-generator/v1",
+          "temperature": null,
+          "max_output_tokens": 2048,
+          "seed": null,
+          "tool_schema_version": "1.0",
+          "model_calls": 4,
+          "provider_request_id": "req_testcase_4",
+          "raw_response_sha256": "f985a5f8c19b61ef47921e4a40040e6815db1b14a226d3840822318215153e7f"
+        },
+        "critic": {
+          "source": "LLM",
+          "provider": "openai",
+          "model": "gpt-4.1-mini",
+          "prompt_version": "semantic-critic/v1",
+          "temperature": 0,
+          "max_output_tokens": 2048,
+          "seed": null,
+          "provider_request_id": "req_critic_3",
+          "raw_response_sha256": "d4444f5d0de49860c5f3eff97cfe975b8dc08e5eeff9ad796abaa9f09e298ad9",
+          "input_tokens": 3200,
+          "output_tokens": 210,
+          "result_sha256": "5822d5ab604983ff97a8057645231280e35bf0f5c8a08101b6785a995a11090d"
+        }
+      }
+    }
+  ],
+  "artifacts": {
+    "scenario": {
+      "revision_id": "01K4Z6Y7X8W9V0T1S2R3Q4P5ND",
+      "sha256": "878742d5aac4461affad2ed4bcb668c161411a8d5f26c26bd4262114450ac058"
+    },
+    "dataset": {
+      "revision_id": "01K4Z6Y7X8W9V0T1S2R3Q4P5NE",
+      "sha256": "958075b020ec2085483434d25d0b496ce76d0be74912a9dca6c8716c288b4604"
+    },
+    "test_cases": [
+      {"ordinal": 1, "revision_id": "01K4Z6Y7X8W9V0T1S2R3Q4P5NF", "sha256": "199bbdaa8e2436edf194f460eaa3ada8fbab1315109320bddbe766d71804e2d9"},
+      {"ordinal": 2, "revision_id": "01K4Z6Y7X8W9V0T1S2R3Q4P5NG", "sha256": "98929516ec70d8f50aa6afd622364c61db4da34447aba57633f640f9858935e8"},
+      {"ordinal": 3, "revision_id": "01K4Z6Y7X8W9V0T1S2R3Q4P5NH", "sha256": "d41cbd99bbddd97553b443ef6eafee1edb71a37270a5881488183fd699cd0007"}
+    ]
+  }
+}

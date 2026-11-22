@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-test-platform.local/schemas/canonical-sql-result.schema.json",
+  "title": "Canonical SQL Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["columns", "rows", "ordered", "truncated"],
+  "properties": {
+    "columns": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "type"],
+        "properties": {
+          "name": {"type": "string", "minLength": 1, "maxLength": 128},
+          "type": {
+            "enum": ["NULL", "STRING", "INTEGER", "DECIMAL", "BOOLEAN", "DATE", "DATETIME", "BINARY", "JSON"]
+          }
+        }
+      }
+    },
+    "rows": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": {
+        "type": "array",
+        "maxItems": 128,
+        "items": {"$ref": "#/$defs/scalar"}
+      }
+    },
+    "ordered": {"type": "boolean"},
+    "truncated": {"type": "boolean"}
+  },
+  "$defs": {
+    "scalar": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "value"],
+      "properties": {
+        "type": {
+          "enum": ["NULL", "STRING", "INTEGER", "DECIMAL", "BOOLEAN", "DATE", "DATETIME", "BINARY", "JSON"]
+        },
+        "value": {}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"type": {"const": "NULL"}}},
+          "then": {"properties": {"value": {"type": "null"}}}
+        },
+        {
+          "if": {"properties": {"type": {"enum": ["STRING", "INTEGER", "DECIMAL", "DATE", "DATETIME", "BINARY"]}}},
+          "then": {"properties": {"value": {"type": "string"}}}
+        },
+        {
+          "if": {"properties": {"type": {"const": "BOOLEAN"}}},
+          "then": {"properties": {"value": {"type": "boolean"}}}
+        }
+      ]
+    }
+  }
+}

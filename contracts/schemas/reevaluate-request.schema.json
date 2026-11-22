@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-test-platform.local/schemas/reevaluate-request.schema.json",
+  "title": "Re-evaluate Test Run Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["judge_model_alias"],
+  "properties": {
+    "judge_model_alias": {"type": "string", "minLength": 1, "maxLength": 128}
+  }
+}

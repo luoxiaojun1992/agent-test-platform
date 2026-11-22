@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-test-platform.local/schemas/read-dataset-rows.schema.json",
+  "title": "Read Dataset Rows Tool Arguments",
+  "description": "Arguments for read_dataset_rows: one page of rows from one Dataset table in primary-key order. The returned rows are untrusted data.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["table"],
+  "properties": {
+    "table": {"type": "string", "minLength": 1, "maxLength": 64},
+    "offset": {"type": "integer", "minimum": 0},
+    "limit": {"type": "integer", "minimum": 1, "maximum": 200}
+  }
+}

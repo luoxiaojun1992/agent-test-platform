@@ -1,0 +1,1637 @@
+openapi: 3.1.0
+info:
+  title: Agent Test Platform API
+  version: 1.0.0
+  description: Generation-first MVP API. JSON only; timestamps are RFC 3339 UTC.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+paths:
+  /generation-jobs:
+    post:
+      operationId: createGenerationJob
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/generation-request.schema.json'
+      responses:
+        '202':
+          description: Job accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationJob'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    get:
+      operationId: listGenerationJobs
+      parameters:
+        - name: status
+          in: query
+          schema:
+            enum: [PENDING, VALIDATING_INPUT, GENERATING_SCENARIO, VALIDATING_SCENARIO, REPAIRING_SCENARIO, GENERATING_DATASET, VALIDATING_DATASET, REPAIRING_DATASET, GENERATING_TEST_CASES, VALIDATING_TEST_CASES, REPAIRING_TEST_CASES, AWAITING_REVIEW, PUBLISHING, COMPLETED, FAILED, CANCELLED]
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Generation Jobs, most recently created first
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/GenerationJob'
+                  next_cursor:
+                    type: [string, 'null']
+  /generation-jobs/{jobId}:
+    get:
+      operationId: getGenerationJob
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Generation Job
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationJob'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /generation-jobs/{jobId}/cancel:
+    post:
+      operationId: cancelGenerationJob
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: Cancellation requested
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationJob'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /generation-jobs/{jobId}/review:
+    post:
+      operationId: reviewGenerationJob
+      description: >-
+        Records a human decision on a Job paused in AWAITING_REVIEW. APPROVE moves it to PUBLISHING
+        and re-queues it for a Worker; REJECT fails the Job and its Pipeline with nothing published.
+        jobId must be the id of the stage Job reported as AWAITING_REVIEW (the id field of the
+        GenerationJob returned by GET); a review is never redirected to a later Pipeline stage.
+        Repeating the decision a Job already carries returns it unchanged.
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerationReviewRequest'
+      responses:
+        '202':
+          description: Review recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationJob'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /generation-jobs/{jobId}/draft:
+    get:
+      operationId: getGenerationJobDraft
+      description: >-
+        Returns the draft a reviewer is being asked to approve. Drafts are otherwise internal
+        staging data, so this is available only while the Job is AWAITING_REVIEW and any other
+        status is a 409. jobId must be the id of the stage Job reported as AWAITING_REVIEW (the id
+        field of the GenerationJob returned by GET), the same Job a review decision would bind to.
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Draft content of the Job awaiting review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationDraft'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /generation-jobs/{jobId}/package:
+    get:
+      operationId: getGenerationPackage
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Published immutable package
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationPackage'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /scenarios:
+    get:
+      operationId: listScenarios
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Logical Scenarios
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Scenario'
+                  next_cursor:
+                    type: [string, 'null']
+  /scenarios/{scenarioId}/revisions:
+    get:
+      operationId: listScenarioRevisions
+      parameters:
+        - $ref: '#/components/parameters/ScenarioId'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Revisions for one logical Scenario, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ScenarioRevision'
+                  next_cursor:
+                    type: [string, 'null']
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /scenario-revisions/{revisionId}:
+    get:
+      operationId: getScenarioRevision
+      parameters:
+        - $ref: '#/components/parameters/RevisionId'
+      responses:
+        '200':
+          description: Immutable Scenario Revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScenarioRevision'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /datasets:
+    get:
+      operationId: listDatasets
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Logical Datasets
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Dataset'
+                  next_cursor:
+                    type: [string, 'null']
+  /datasets/{datasetId}/revisions:
+    get:
+      operationId: listDatasetRevisions
+      parameters:
+        - $ref: '#/components/parameters/DatasetId'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Revisions for one logical Dataset, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DatasetRevision'
+                  next_cursor:
+                    type: [string, 'null']
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /dataset-revisions/{revisionId}:
+    get:
+      operationId: getDatasetRevision
+      parameters:
+        - $ref: '#/components/parameters/RevisionId'
+      responses:
+        '200':
+          description: Immutable Dataset Revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatasetRevision'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /test-cases:
+    get:
+      operationId: listTestCases
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Logical Test Cases
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TestCase'
+                  next_cursor:
+                    type: [string, 'null']
+  /test-cases/{testCaseId}/revisions:
+    get:
+      operationId: listTestCaseRevisions
+      parameters:
+        - $ref: '#/components/parameters/TestCaseId'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Revisions for one logical Test Case, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TestCaseRevision'
+                  next_cursor:
+                    type: [string, 'null']
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /test-case-revisions/{revisionId}:
+    get:
+      operationId: getTestCaseRevision
+      parameters:
+        - $ref: '#/components/parameters/RevisionId'
+      responses:
+        '200':
+          description: Immutable Test Case Revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TestCaseRevision'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /analytics/overview:
+    get:
+      operationId: getAnalyticsOverview
+      description: Dashboard aggregates over the last N UTC calendar days (default 14, 1-90). A Run's verdict is its latest COMPLETED Evaluation Attempt.
+      parameters:
+        - name: days
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 90
+            default: 14
+      responses:
+        '200':
+          description: Asset counts, daily Run results, score distribution and per-Agent-Version results
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [days, assets, agents, run_statuses, generation_jobs, daily_runs, daily_assets, score_distribution, by_agent_version]
+                properties:
+                  days:
+                    type: integer
+                  assets:
+                    type: array
+                    items:
+                      type: object
+                      required: [kind, resources, revisions, usable_revisions]
+                      properties:
+                        kind:
+                          enum: [scenarios, datasets, test_cases]
+                        resources:
+                          type: integer
+                        revisions:
+                          type: integer
+                        usable_revisions:
+                          type: integer
+                  agents:
+                    type: object
+                    required: [agents, versions]
+                    properties:
+                      agents:
+                        type: integer
+                      versions:
+                        type: integer
+                  run_statuses:
+                    type: array
+                    items:
+                      type: object
+                      required: [status, count]
+                      properties:
+                        status:
+                          type: string
+                        count:
+                          type: integer
+                  generation_jobs:
+                    type: array
+                    items:
+                      type: object
+                      required: [kind, status, count]
+                      properties:
+                        kind:
+                          type: string
+                        status:
+                          type: string
+                        count:
+                          type: integer
+                  daily_runs:
+                    type: array
+                    description: One entry per day, oldest first. pass_rate and avg_score are null on days without an evaluated Run.
+                    items:
+                      type: object
+                      required: [date, total, evaluated, passed, pass_rate, avg_score]
+                      properties:
+                        date:
+                          type: string
+                          format: date
+                        total:
+                          type: integer
+                        evaluated:
+                          type: integer
+                        passed:
+                          type: integer
+                        pass_rate:
+                          type: [number, 'null']
+                        avg_score:
+                          type: [number, 'null']
+                  daily_assets:
+                    type: array
+                    items:
+                      type: object
+                      required: [date, scenarios, datasets, test_cases]
+                      properties:
+                        date:
+                          type: string
+                          format: date
+                        scenarios:
+                          type: integer
+                        datasets:
+                          type: integer
+                        test_cases:
+                          type: integer
+                  score_distribution:
+                    type: array
+                    items:
+                      type: object
+                      required: [from, to, count]
+                      properties:
+                        from:
+                          type: integer
+                        to:
+                          type: integer
+                        count:
+                          type: integer
+                  by_agent_version:
+                    type: array
+                    items:
+                      type: object
+                      required: [agent_name, version, agent_version_id, runs, evaluated, passed, pass_rate, avg_score]
+                      properties:
+                        agent_name:
+                          type: string
+                        version:
+                          type: string
+                        agent_version_id:
+                          type: string
+                        runs:
+                          type: integer
+                        evaluated:
+                          type: integer
+                        passed:
+                          type: integer
+                        pass_rate:
+                          type: [number, 'null']
+                        avg_score:
+                          type: [number, 'null']
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /models:
+    get:
+      operationId: listModels
+      responses:
+        '200':
+          description: Registered Generation and Judge models
+  /models/{role}/active:
+    put:
+      operationId: activateModel
+      parameters:
+        - name: role
+          in: path
+          required: true
+          schema: {type: string, enum: [generation, judge]}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [alias]
+              properties:
+                alias: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        '200':
+          description: The only active model of the role
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /agent-tool-discovery:
+    post:
+      operationId: discoverAgentTools
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [chat_endpoint, target_bearer_token_ref]
+              properties:
+                chat_endpoint: {type: string}
+                target_bearer_token_ref: {type: string}
+      responses:
+        '200':
+          description: Tool definitions read from the Target Agent GET /v1/tools
+        '502':
+          description: The Target Agent tool list is unavailable or invalid
+  /agents:
+    post:
+      operationId: createAgent
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAgentRequest'
+      responses:
+        '201':
+          description: Agent created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Agent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    get:
+      operationId: listAgents
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Agents
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Agent'
+                  next_cursor:
+                    type: [string, 'null']
+  /validation-mysql:
+    post:
+      operationId: createValidationDB
+      summary: Register a validation MySQL instance. The admin password is referenced by secret name and is never returned.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateValidationDBRequest'
+      responses:
+        '201':
+          description: Target registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationDB'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    get:
+      operationId: listValidationDB
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Registered validation MySQL instances, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ValidationDB'
+                  next_cursor:
+                    type: [string, 'null']
+  /database-profiles:
+    post:
+      operationId: createDatabaseProfile
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDatabaseProfileRequest'
+      responses:
+        '201':
+          description: Database Profile created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatabaseProfile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    get:
+      operationId: listDatabaseProfiles
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Database Profiles
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DatabaseProfile'
+                  next_cursor:
+                    type: [string, 'null']
+  /secrets:
+    get:
+      operationId: listSecrets
+      summary: List test-environment credential metadata. Values are never returned.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Credential metadata page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /secrets/{name}:
+    put:
+      operationId: putSecret
+      summary: Create or replace a test-environment credential. The value is write-only.
+      parameters:
+        - $ref: '#/components/parameters/SecretName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecretWriteRequest'
+      responses:
+        '200':
+          description: Credential stored. The response carries metadata only.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretMetadata'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /agents/{agentId}:
+    get:
+      operationId: getAgent
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '200':
+          description: Agent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Agent'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /agents/{agentId}/versions:
+    post:
+      operationId: createAgentVersion
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAgentVersionRequest'
+      responses:
+        '201':
+          description: Agent version created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentVersion'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    get:
+      operationId: listAgentVersions
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Agent Versions
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AgentVersion'
+                  next_cursor:
+                    type: [string, 'null']
+  /test-runs:
+    post:
+      operationId: createTestRuns
+      description: Runs the given Test Case Revisions on one Agent Version. Seed data is written into the Agent's configured database; an Agent without one is refused with AGENT_DATABASE_NOT_CONFIGURED.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRunsRequest'
+      responses:
+        '202':
+          description: Runs queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateRunsResponse'
+    get:
+      operationId: listTestRuns
+      parameters:
+        - name: agent_version_id
+          in: query
+          schema:
+            $ref: '#/components/schemas/Ulid'
+        - name: test_case_revision_id
+          in: query
+          schema:
+            $ref: '#/components/schemas/Ulid'
+        - name: status
+          in: query
+          schema:
+            enum: [QUEUED, PREPARING, RUNNING, EVALUATING, COMPLETED, INVALID_TEST_DATA, EVALUATION_FAILED, CANCELLED]
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Test Runs, most recently created first
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TestRun'
+                  next_cursor:
+                    type: [string, 'null']
+  /benchmark:
+    get:
+      operationId: getBenchmark
+      parameters:
+        - name: test_case_revision_id
+          in: query
+          required: true
+          description: Repeat the parameter to compare over several Test Case Revisions (1-100).
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/Ulid'
+          style: form
+          explode: true
+      responses:
+        '200':
+          description: Per-Agent-Version comparison over the Runs of these Test Case Revisions
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BenchmarkEntry'
+  /test-runs/{runId}:
+    get:
+      operationId: getTestRun
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+      responses:
+        '200':
+          description: Test Run
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TestRun'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /test-runs/{runId}/tool-calls:
+    get:
+      operationId: listToolCalls
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+      responses:
+        '200':
+          description: Ordered structured Tool Call Records
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ToolCallRecord'
+  /test-runs/{runId}/cancel:
+    post:
+      operationId: cancelTestRun
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: Cancellation accepted; cleanup continues asynchronously
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TestRun'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /test-runs/{runId}/evaluations:
+    get:
+      operationId: listEvaluationAttempts
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+      responses:
+        '200':
+          description: Evaluation Attempts
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EvaluationAttempt'
+    post:
+      operationId: createEvaluationAttempt
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [judge_model_alias]
+              properties:
+                judge_model_alias:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+      responses:
+        '202':
+          description: Re-evaluation queued as a new Test Run that copies this Run's execution evidence; this Run is unchanged
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateRunsResponse'
+  /evaluations:
+    get:
+      operationId: listEvaluationAttemptsAcrossRuns
+      parameters:
+        - name: status
+          in: query
+          schema:
+            enum: [PENDING, RUNNING, COMPLETED, FAILED, CANCELLED]
+        - name: pass
+          in: query
+          schema:
+            type: boolean
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Evaluation Attempts across Test Runs, most recently created first
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EvaluationAttempt'
+                  next_cursor:
+                    type: [string, 'null']
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+    JobId:
+      name: jobId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Ulid'
+    AgentId:
+      name: agentId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Ulid'
+    RunId:
+      name: runId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Ulid'
+    RevisionId:
+      name: revisionId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Ulid'
+    ScenarioId:
+      name: scenarioId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Ulid'
+    DatasetId:
+      name: datasetId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Ulid'
+    TestCaseId:
+      name: testCaseId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Ulid'
+    SecretName:
+      name: name
+      in: path
+      required: true
+      description: Credential name. Other tables reference it as a Secret Reference.
+      schema:
+        type: string
+        pattern: '^[a-z0-9][a-z0-9-]{0,127}$'
+    Cursor:
+      name: cursor
+      in: query
+      schema:
+        type: string
+        maxLength: 512
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: State or idempotency conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Ulid:
+      type: string
+      pattern: '^[0-9A-HJKMNP-TV-Z]{26}$'
+    Error:
+      type: object
+      additionalProperties: false
+      required: [code, message, retryable]
+      properties:
+        code:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]{1,63}$'
+        message:
+          type: string
+          maxLength: 2000
+        retryable:
+          type: boolean
+        details:
+          type: object
+    GenerationDraft:
+      description: Exactly one of scenario, dataset, or test_cases is present, matching job_kind.
+      type: object
+      additionalProperties: false
+      required: [job_id, job_kind]
+      properties:
+        job_id:
+          $ref: '#/components/schemas/Ulid'
+        job_kind:
+          enum: [SCENARIO, DATASET, TEST_CASES]
+        input_scenario_revision_id:
+          $ref: '#/components/schemas/Ulid'
+        input_dataset_revision_id:
+          $ref: '#/components/schemas/Ulid'
+        scenario:
+          $ref: './schemas/scenario.schema.json'
+        dataset:
+          type: object
+          additionalProperties: false
+          required: [schema_sql, seed_sql, constraints, metadata]
+          properties:
+            schema_sql: {type: string}
+            seed_sql: {type: string}
+            constraints: {$ref: './schemas/dataset-constraints.schema.json'}
+            metadata: {$ref: './schemas/dataset-metadata.schema.json'}
+        test_cases:
+          type: array
+          items:
+            $ref: './schemas/create-test-case.schema.json'
+    GenerationReviewRequest:
+      type: object
+      additionalProperties: false
+      required: [decision]
+      properties:
+        decision:
+          enum: [APPROVE, REJECT]
+        note:
+          type: string
+          maxLength: 2000
+    GenerationJob:
+      type: object
+      additionalProperties: false
+      required: [id, status, requested_test_case_count, created_at, updated_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        job_kind:
+          enum: [SCENARIO, DATASET, TEST_CASES]
+        pipeline_id:
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/Ulid'
+        input_scenario_revision_id:
+          $ref: '#/components/schemas/Ulid'
+        input_dataset_revision_id:
+          $ref: '#/components/schemas/Ulid'
+        status:
+          enum: [PENDING, VALIDATING_INPUT, GENERATING_SCENARIO, VALIDATING_SCENARIO, REPAIRING_SCENARIO, GENERATING_DATASET, VALIDATING_DATASET, REPAIRING_DATASET, GENERATING_TEST_CASES, VALIDATING_TEST_CASES, REPAIRING_TEST_CASES, AWAITING_REVIEW, PUBLISHING, COMPLETED, FAILED, CANCELLED]
+        require_manual_review:
+          type: boolean
+        requested_test_case_count:
+          description: Only TEST_CASES jobs request test cases; SCENARIO and DATASET jobs report 0.
+          type: integer
+          minimum: 0
+          maximum: 20
+        accepted_test_case_count:
+          type: integer
+          minimum: 0
+          maximum: 20
+        repair_round:
+          type: integer
+          minimum: 0
+          maximum: 2
+        error:
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/Error'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    GenerationPackage:
+      type: object
+      additionalProperties: false
+      required: [job_id, scenario_revision_id, dataset_revision_id, test_case_revision_ids, manifest, manifest_sha256]
+      properties:
+        job_id:
+          $ref: '#/components/schemas/Ulid'
+        scenario_revision_id:
+          $ref: '#/components/schemas/Ulid'
+        dataset_revision_id:
+          $ref: '#/components/schemas/Ulid'
+        test_case_revision_ids:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/Ulid'
+        manifest:
+          $ref: './schemas/generation-manifest.schema.json'
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+    CreateAgentRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 2000
+        database_profile_id:
+          description: The Agent's own database (a Database Profile). Used only to write test data; never sent to the Agent.
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/Ulid'
+    Agent:
+      type: object
+      additionalProperties: false
+      required: [id, name, created_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 2000
+        database_profile_id:
+          description: The Agent's own database (a Database Profile). Used only to write test data; never sent to the Agent.
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/Ulid'
+        created_at:
+          type: string
+          format: date-time
+    CreateAgentVersionRequest:
+      type: object
+      additionalProperties: false
+      required: [version, chat_endpoint, target_bearer_token_ref, target_model, contract_version, tool_evaluation_mode]
+      properties:
+        version:
+          type: string
+          minLength: 1
+          maxLength: 128
+        chat_endpoint:
+          type: string
+          format: uri
+          maxLength: 2048
+        target_bearer_token_ref:
+          type: string
+          minLength: 1
+          maxLength: 512
+        target_model:
+          type: string
+          minLength: 1
+          maxLength: 255
+        contract_version:
+          const: '1.0'
+        tool_evaluation_mode:
+          enum: [DETERMINISTIC_CHAIN, SESSION_LLM_ONLY]
+        tool_catalog:
+          oneOf:
+            - type: 'null'
+            - type: array
+              minItems: 1
+              maxItems: 64
+              items:
+                $ref: '#/components/schemas/TargetToolDefinition'
+      allOf:
+        - if:
+            properties:
+              tool_evaluation_mode:
+                const: DETERMINISTIC_CHAIN
+            required: [tool_evaluation_mode]
+          then:
+            required: [tool_catalog]
+            properties:
+              tool_catalog:
+                type: array
+                minItems: 1
+          else:
+            properties:
+              tool_catalog:
+                type: 'null'
+    AgentVersion:
+      type: object
+      additionalProperties: false
+      required: [id, agent_id, version, chat_endpoint, target_model, contract_version, tool_evaluation_mode, tool_catalog, created_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        agent_id:
+          $ref: '#/components/schemas/Ulid'
+        version:
+          type: string
+          minLength: 1
+          maxLength: 128
+        chat_endpoint:
+          type: string
+          format: uri
+          maxLength: 2048
+        target_model:
+          type: string
+          minLength: 1
+          maxLength: 255
+        contract_version:
+          const: '1.0'
+        tool_evaluation_mode:
+          enum: [DETERMINISTIC_CHAIN, SESSION_LLM_ONLY]
+        tool_catalog:
+          oneOf:
+            - type: 'null'
+            - type: array
+              items:
+                $ref: '#/components/schemas/TargetToolDefinition'
+        created_at:
+          type: string
+          format: date-time
+    TargetToolDefinition:
+      type: object
+      additionalProperties: false
+      required: [name, description, input_schema]
+      properties:
+        name:
+          type: string
+          pattern: '^[a-z][a-z0-9_.-]{0,127}$'
+        description:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        input_schema:
+          type: object
+    SecretWriteRequest:
+      type: object
+      additionalProperties: false
+      required: [value]
+      properties:
+        value:
+          type: string
+          description: Plaintext credential, 1-4096 bytes and not blank. Sent once and never returned.
+    SecretMetadata:
+      type: object
+      additionalProperties: false
+      required: [name, created_at, updated_at]
+      properties:
+        name:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9-]{0,127}$'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    SecretList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SecretMetadata'
+        next_cursor:
+          type: [string, 'null']
+    CreateValidationDBRequest:
+      type: object
+      additionalProperties: false
+      required: [name, host, port, admin_username, admin_password_secret_name, tls_mode]
+      properties:
+        name:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9-]{0,62}$'
+        host:
+          type: string
+          minLength: 1
+          maxLength: 255
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        admin_username:
+          type: string
+          pattern: '^[A-Za-z0-9_]{1,32}$'
+        admin_password_secret_name:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9-]{0,127}$'
+          description: Name of a credential entered on the Credentials page.
+        tls_mode:
+          type: string
+          enum: [DISABLED_LOCAL_ONLY, VERIFY_IDENTITY]
+        ca_certificate_pem:
+          type: string
+          maxLength: 16384
+          description: Optional public CA certificate, used only with VERIFY_IDENTITY.
+    ValidationDB:
+      type: object
+      additionalProperties: false
+      required: [id, name, host, port, admin_username, admin_password_secret_name, tls_mode, created_at]
+      properties:
+        id:
+          type: string
+          pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        name:
+          type: string
+        host:
+          type: string
+        port:
+          type: integer
+        admin_username:
+          type: string
+        admin_password_secret_name:
+          type: string
+        tls_mode:
+          type: string
+          enum: [DISABLED_LOCAL_ONLY, VERIFY_IDENTITY]
+        ca_certificate_pem:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    CreateDatabaseProfileRequest:
+      $ref: './schemas/database-profile-request.schema.json'
+    DatabaseProfile:
+      type: object
+      additionalProperties: false
+      required: [id, name, engine, host, port, database, username, tls_mode, snapshot_mode, snapshot_timeout_seconds, created_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        name:
+          type: string
+        engine:
+          const: MYSQL
+        host:
+          type: string
+        port:
+          type: integer
+        database:
+          type: string
+        username:
+          type: string
+        tls_mode:
+          enum: [VERIFY_IDENTITY, DISABLED_LOCAL_ONLY]
+        ca_certificate_pem:
+          type: string
+          description: Public CA certificate, present only with VERIFY_IDENTITY. Never a credential.
+        snapshot_mode:
+          enum: [SCHEMA_ONLY, SCHEMA_AND_DATA]
+        snapshot_timeout_seconds:
+          type: integer
+          minimum: 1
+          maximum: 300
+        created_at:
+          type: string
+          format: date-time
+    CreateRunsRequest:
+      type: object
+      additionalProperties: false
+      required: [agent_version_id, test_case_revision_ids]
+      properties:
+        agent_version_id:
+          $ref: '#/components/schemas/Ulid'
+        test_case_revision_ids:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/Ulid'
+        repetitions:
+          type: integer
+          minimum: 1
+          maximum: 10
+          default: 1
+    CreateRunsResponse:
+      type: object
+      additionalProperties: false
+      required: [run_ids]
+      properties:
+        run_ids:
+          type: array
+          items:
+            $ref: '#/components/schemas/Ulid'
+    TestRun:
+      type: object
+      additionalProperties: false
+      required: [id, status, test_case_revision_id, dataset_revision_id, agent_version_id, created_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        status:
+          enum: [QUEUED, PREPARING, RUNNING, EVALUATING, COMPLETED, INVALID_TEST_DATA, EVALUATION_FAILED, CANCELLED]
+        execution_outcome:
+          enum: [COMPLETED, AGENT_ERROR, TIMEOUT, CANCELLED, INFRA_ERROR]
+        test_case_revision_id:
+          $ref: '#/components/schemas/Ulid'
+        dataset_revision_id:
+          $ref: '#/components/schemas/Ulid'
+        agent_version_id:
+          $ref: '#/components/schemas/Ulid'
+        final_output:
+          type: [string, 'null']
+          maxLength: 16000
+        precondition_results:
+          type: [object, 'null']
+        postcondition_results:
+          type: [object, 'null']
+        state_diff:
+          type: [object, 'null']
+        deterministic_details:
+          type: [object, 'null']
+        error:
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/Error'
+        deterministic_score:
+          type: [number, 'null']
+          minimum: 0
+          maximum: 100
+        final_score:
+          type: [number, 'null']
+          minimum: 0
+          maximum: 100
+        pass:
+          type: [boolean, 'null']
+        created_at:
+          type: string
+          format: date-time
+    Scenario:
+      type: object
+      additionalProperties: false
+      required: [id, created_at]
+      properties:
+        id: {$ref: '#/components/schemas/Ulid'}
+        created_at: {type: string, format: date-time}
+    ScenarioRevision:
+      type: object
+      additionalProperties: false
+      required: [id, scenario_id, revision_no, quality_level, content, content_sha256, created_at]
+      properties:
+        id: {$ref: '#/components/schemas/Ulid'}
+        scenario_id: {$ref: '#/components/schemas/Ulid'}
+        revision_no: {type: integer, minimum: 1}
+        quality_level: {enum: [SYNTHETIC, SOURCE_GROUNDED]}
+        content: {$ref: './schemas/scenario.schema.json'}
+        content_sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+        created_at: {type: string, format: date-time}
+    Dataset:
+      type: object
+      additionalProperties: false
+      required: [id, created_at]
+      properties:
+        id: {$ref: '#/components/schemas/Ulid'}
+        created_at: {type: string, format: date-time}
+    DatasetRevision:
+      type: object
+      additionalProperties: false
+      required: [id, dataset_id, revision_no, schema_sql, seed_sql, constraints, metadata, content_sha256, created_at]
+      properties:
+        id: {$ref: '#/components/schemas/Ulid'}
+        dataset_id: {$ref: '#/components/schemas/Ulid'}
+        revision_no: {type: integer, minimum: 1}
+        schema_sql: {type: string}
+        seed_sql: {type: string}
+        constraints: {$ref: './schemas/dataset-constraints.schema.json'}
+        metadata: {$ref: './schemas/dataset-metadata.schema.json'}
+        content_sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+        created_at: {type: string, format: date-time}
+    TestCase:
+      type: object
+      additionalProperties: false
+      required: [id, created_at]
+      properties:
+        id: {$ref: '#/components/schemas/Ulid'}
+        created_at: {type: string, format: date-time}
+    TestCaseRevision:
+      type: object
+      additionalProperties: false
+      required: [id, test_case_id, revision_no, content, content_sha256, lifecycle_status, created_at]
+      properties:
+        id: {$ref: '#/components/schemas/Ulid'}
+        test_case_id: {$ref: '#/components/schemas/Ulid'}
+        revision_no: {type: integer, minimum: 1}
+        content: {$ref: './schemas/test-case.schema.json'}
+        content_sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+        lifecycle_status: {enum: [VALIDATED, ACTIVE, DEPRECATED]}
+        created_at: {type: string, format: date-time}
+    BenchmarkEntry:
+      type: object
+      additionalProperties: false
+      required: [agent_version_id, run_count, pass_rate, avg_score, critical_failures]
+      properties:
+        agent_version_id:
+          $ref: '#/components/schemas/Ulid'
+        run_count:
+          type: integer
+          minimum: 0
+        pass_rate:
+          type: number
+          minimum: 0
+          maximum: 100
+        avg_score:
+          type: number
+          minimum: 0
+          maximum: 100
+        critical_failures:
+          type: integer
+          minimum: 0
+    ToolCallRecord:
+      type: object
+      additionalProperties: false
+      required: [sequence, call_id, tool_name, arguments, status, duration_ms, trace_source]
+      properties:
+        sequence:
+          type: integer
+          minimum: 1
+          maximum: 32
+        call_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        tool_name:
+          type: string
+        arguments:
+          type: object
+        result:
+          type: [object, 'null']
+        error:
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/Error'
+        status:
+          enum: [SUCCESS, ERROR]
+        duration_ms:
+          type: integer
+          minimum: 0
+        trace_source:
+          const: AGENT_REPORTED
+    EvaluationAttempt:
+      type: object
+      additionalProperties: false
+      required: [id, test_run_id, attempt_no, status, judge_model_alias, created_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        test_run_id:
+          $ref: '#/components/schemas/Ulid'
+        attempt_no:
+          type: integer
+          minimum: 1
+        status:
+          enum: [PENDING, RUNNING, COMPLETED, FAILED, CANCELLED]
+        judge_model_alias:
+          type: string
+        llm_score:
+          type: [number, 'null']
+          minimum: 0
+          maximum: 100
+        final_score:
+          type: [number, 'null']
+          minimum: 0
+          maximum: 100
+        pass:
+          type: [boolean, 'null']
+        created_at:
+          type: string
+          format: date-time

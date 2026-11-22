@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-test-platform.local/schemas/normalized-generation-request.schema.json",
+  "title": "Normalized Generation Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "description", "target_agent_version_id", "generate_dataset", "database_profile_id", "validation_db_ids", "domain", "agent_mode", "capabilities", "difficulty", "test_case_count", "coverage", "auto_activate"],
+  "properties": {
+    "schema_version": {"const": "1.1"},
+    "validation_db_ids": {"type": "array", "minItems": 0, "maxItems": 8, "uniqueItems": true, "items": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"}},
+    "description": {"type": "string", "minLength": 1, "maxLength": 4000},
+    "target_agent_version_id": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"}
+      ]
+    },
+    "generate_dataset": {"type": "boolean"},
+    "database_profile_id": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"}
+      ]
+    },
+    "domain": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "minLength": 1, "maxLength": 128}
+      ]
+    },
+    "agent_mode": {"enum": ["ANSWER", "TASK"]},
+    "capabilities": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 32,
+          "items": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,63}$"}
+        }
+      ]
+    },
+    "difficulty": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["min", "max"],
+          "properties": {
+            "min": {"enum": ["EASY", "MEDIUM", "HARD", "EXTREME"]},
+            "max": {"enum": ["EASY", "MEDIUM", "HARD", "EXTREME"]}
+          }
+        }
+      ]
+    },
+    "test_case_count": {"type": "integer", "minimum": 1, "maximum": 20},
+    "coverage": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 16,
+          "items": {"enum": ["NORMAL", "EDGE_CASE", "AMBIGUOUS", "MULTI_STEP", "CONFLICT", "ADVERSARIAL"]}
+        }
+      ]
+    },
+    "auto_activate": {"type": "boolean"},
+    "require_manual_review": {"type": "boolean"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"generate_dataset": {"const": false}}, "required": ["generate_dataset"]},
+      "then": {"properties": {"database_profile_id": {"type": "string"}}},
+      "else": {"properties": {"database_profile_id": {"type": "null"}}}
+    }
+  ]
+}

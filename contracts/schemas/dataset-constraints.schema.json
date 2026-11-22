@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-test-platform.local/schemas/dataset-constraints.schema.json",
+  "title": "Dataset Executable Constraints",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "checks"],
+  "properties": {
+    "version": {"const": "1.0"},
+    "checks": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "phases", "query", "expectation", "critical", "rule_id"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,127}$"},
+          "phases": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"enum": ["AFTER_SEED", "AFTER_AGENT"]}
+          },
+          "query": {"type": "string", "minLength": 1, "maxLength": 4096},
+          "expectation": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "equals"],
+            "properties": {
+              "type": {"const": "ROW_COUNT"},
+              "equals": {"type": "integer", "minimum": 0}
+            }
+          },
+          "critical": {"type": "boolean"},
+          "rule_id": {"type": "string", "minLength": 1, "maxLength": 128}
+        }
+      }
+    }
+  }
+}

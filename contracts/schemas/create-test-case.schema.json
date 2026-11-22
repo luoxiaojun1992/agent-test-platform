@@ -1,0 +1,275 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-test-platform.local/schemas/create-test-case.schema.json",
+  "title": "create_test_case Tool Input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "job_id", "client_case_id", "scenario_revision_id",
+    "dataset_revision_id", "agent_mode", "prompt", "preconditions",
+    "expected_output", "postconditions", "allowed_state_changes", "knowledge_documents",
+    "tool_evaluation_mode", "expected_tool_call_chain", "evaluation_criteria", "difficulty",
+    "difficulty_profile", "generation_assumptions"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "job_id": {"$ref": "#/$defs/id"},
+    "client_case_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"},
+    "scenario_revision_id": {"$ref": "#/$defs/id"},
+    "dataset_revision_id": {"$ref": "#/$defs/id"},
+    "agent_mode": {"enum": ["ANSWER", "TASK"]},
+    "prompt": {"type": "string", "minLength": 1, "maxLength": 4000},
+    "preconditions": {"type": "array", "maxItems": 32, "items": {"$ref": "#/$defs/sqlAssertion"}},
+    "expected_output": {"$ref": "#/$defs/expectedOutput"},
+    "postconditions": {"type": "array", "maxItems": 32, "items": {"$ref": "#/$defs/sqlAssertion"}},
+    "allowed_state_changes": {"type": "array", "maxItems": 32, "items": {"$ref": "#/$defs/mutationRule"}},
+    "knowledge_documents": {"type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/knowledgeDocument"}},
+    "tool_evaluation_mode": {"enum": ["DETERMINISTIC_CHAIN", "SESSION_LLM_ONLY"]},
+    "expected_tool_call_chain": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/toolChain"}
+      ]
+    },
+    "evaluation_criteria": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {"$ref": "#/$defs/criterion"}
+    },
+    "difficulty": {"enum": ["EASY", "MEDIUM", "HARD", "EXTREME"]},
+    "difficulty_profile": {"$ref": "#/$defs/difficultyProfile"},
+    "generation_assumptions": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {"type": "string", "minLength": 1, "maxLength": 1000}
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"agent_mode": {"const": "TASK"}}, "required": ["agent_mode"]},
+      "then": {
+        "properties": {
+          "postconditions": {
+            "minItems": 1,
+            "contains": {"properties": {"critical": {"const": true}}, "required": ["critical"]}
+          },
+          "allowed_state_changes": {"minItems": 1}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"tool_evaluation_mode": {"const": "DETERMINISTIC_CHAIN"}},
+        "required": ["tool_evaluation_mode"]
+      },
+      "then": {
+        "properties": {
+          "expected_tool_call_chain": {
+            "type": "object",
+            "properties": {
+              "steps": {
+                "minItems": 1,
+                "contains": {"properties": {"critical": {"const": true}}, "required": ["critical"]}
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {"expected_tool_call_chain": {"type": "null"}}
+      }
+    }
+  ],
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+    "knowledgeDocument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "text", "content_sha256", "metadata"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "maxLength": 255},
+        "text": {"type": "string", "minLength": 1, "maxLength": 64000, "contentMediaType": "text/plain"},
+        "content_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "metadata": {
+          "type": "object",
+          "maxProperties": 32,
+          "additionalProperties": {"type": "string", "maxLength": 1000}
+        }
+      }
+    },
+    "sqlAssertion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "query", "expected", "critical"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "query": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "expected": {"$ref": "canonical-sql-result.schema.json"},
+        "critical": {"type": "boolean"},
+        "weight": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+        "decimal_tolerance": {"type": "string", "pattern": "^(0|[0-9]+)(\\.[0-9]+)?$"}
+      }
+    },
+    "expectedOutput": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "value"],
+          "properties": {
+            "type": {"enum": ["EXACT", "SEMANTIC", "JSON"]},
+            "value": {}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "required"],
+          "properties": {
+            "type": {"const": "CONTAINS"},
+            "required": {"type": "array", "minItems": 1, "maxItems": 32, "items": {"type": "string", "maxLength": 1000}}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "rules"],
+          "properties": {
+            "type": {"const": "CONSTRAINT"},
+            "rules": {"type": "array", "minItems": 1, "maxItems": 32, "items": {"type": "string", "maxLength": 1000}}
+          }
+        }
+      ]
+    },
+    "predicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["column", "operator"],
+      "properties": {
+        "column": {"type": "string", "minLength": 1, "maxLength": 128},
+        "operator": {"enum": ["=", "!=", "<", "<=", ">", ">=", "IN", "IS_NULL", "IS_NOT_NULL"]},
+        "value": {}
+      }
+    },
+    "assignment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["column", "value"],
+      "properties": {
+        "column": {"type": "string", "minLength": 1, "maxLength": 128},
+        "value": {}
+      }
+    },
+    "mutationRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["table", "operation", "columns", "predicate", "min_affected_rows", "max_affected_rows"],
+      "properties": {
+        "table": {"type": "string", "minLength": 1, "maxLength": 128},
+        "operation": {"enum": ["INSERT", "UPDATE", "DELETE"]},
+        "columns": {"type": "array", "maxItems": 128, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 128}},
+        "predicate": {"$ref": "#/$defs/predicate"},
+        "min_affected_rows": {"type": "integer", "minimum": 0},
+        "max_affected_rows": {"type": "integer", "minimum": 0}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"operation": {"const": "DELETE"}}, "required": ["operation"]},
+          "then": {"properties": {"columns": {"maxItems": 0}}},
+          "else": {"properties": {"columns": {"minItems": 1}}}
+        }
+      ]
+    },
+    "sqlMatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "operation": {"enum": ["SELECT", "INSERT", "UPDATE", "DELETE"]},
+        "required_tables": {"type": "array", "uniqueItems": true, "items": {"type": "string", "maxLength": 128}},
+        "forbidden_tables": {"type": "array", "uniqueItems": true, "items": {"type": "string", "maxLength": 128}},
+        "required_columns": {"type": "array", "uniqueItems": true, "items": {"type": "string", "maxLength": 128}},
+        "required_predicates": {"type": "array", "maxItems": 16, "items": {"$ref": "#/$defs/predicate"}},
+        "required_assignments": {"type": "array", "maxItems": 16, "items": {"$ref": "#/$defs/assignment"}}
+      },
+      "minProperties": 1
+    },
+    "resultMatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {"enum": ["SUCCESS", "ERROR"]},
+        "affected_rows": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "min": {"type": "integer", "minimum": 0},
+            "max": {"type": "integer", "minimum": 0}
+          }
+        }
+      },
+      "minProperties": 1
+    },
+    "toolStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "tool_name", "required", "critical", "intent"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "tool_name": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,127}$"},
+        "required": {"type": "boolean"},
+        "critical": {"type": "boolean"},
+        "weight": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+        "intent": {"type": "string", "minLength": 1, "maxLength": 1000},
+        "arguments_schema": {"type": "object"},
+        "sql_match": {"$ref": "#/$defs/sqlMatch"},
+        "result_match": {"$ref": "#/$defs/resultMatch"}
+      }
+    },
+    "forbiddenCall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool_name"],
+      "properties": {
+        "tool_name": {"type": "string", "pattern": "^[a-z*][a-z0-9_.*-]{0,127}$"},
+        "sql_match": {"$ref": "#/$defs/sqlMatch"}
+      }
+    },
+    "toolChain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["match_mode", "allow_extra_read_calls", "max_actual_calls", "steps", "forbidden"],
+      "properties": {
+        "match_mode": {"const": "ORDERED_SUBSEQUENCE"},
+        "allow_extra_read_calls": {"type": "boolean"},
+        "max_actual_calls": {"type": "integer", "minimum": 1, "maximum": 32},
+        "steps": {"type": "array", "maxItems": 32, "items": {"$ref": "#/$defs/toolStep"}},
+        "forbidden": {"type": "array", "maxItems": 32, "items": {"$ref": "#/$defs/forbiddenCall"}}
+      }
+    },
+    "criterion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "description", "weight"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"},
+        "description": {"type": "string", "minLength": 1, "maxLength": 1000},
+        "weight": {"type": "number", "exclusiveMinimum": 0, "maximum": 1}
+      }
+    },
+    "difficultyProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["data_complexity", "reasoning_complexity", "tool_complexity", "ambiguity", "multi_step", "state_change_complexity", "adversarial_complexity"],
+      "properties": {
+        "data_complexity": {"type": "integer", "minimum": 1, "maximum": 5},
+        "reasoning_complexity": {"type": "integer", "minimum": 1, "maximum": 5},
+        "tool_complexity": {"type": "integer", "minimum": 1, "maximum": 5},
+        "ambiguity": {"type": "integer", "minimum": 1, "maximum": 5},
+        "multi_step": {"type": "integer", "minimum": 1, "maximum": 5},
+        "state_change_complexity": {"type": "integer", "minimum": 1, "maximum": 5},
+        "adversarial_complexity": {"type": "integer", "minimum": 1, "maximum": 5}
+      }
+    }
+  }
+}

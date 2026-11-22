@@ -1,0 +1,11 @@
+.git
+.github
+.vscode
+.idea
+**/node_modules
+**/dist
+**/coverage
+*.log
+.env
+.env.*
+!deployments/compose.env.example

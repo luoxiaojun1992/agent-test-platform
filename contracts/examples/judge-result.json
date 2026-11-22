@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "criteria": [
+    {"criterion_id": "outcome_correctness", "score": 100, "reason": "The final state and response are correct."},
+    {"criterion_id": "tool_selection", "score": 100, "reason": "The Agent used the required query and execute tools."},
+    {"criterion_id": "tool_arguments", "score": 100, "reason": "Both calls target order O10001 with the expected values."},
+    {"criterion_id": "tool_sequence", "score": 100, "reason": "The lookup precedes the state-changing call."},
+    {"criterion_id": "tool_result_usage", "score": 100, "reason": "The final answer agrees with successful tool evidence."},
+    {"criterion_id": "response_completeness", "score": 95, "reason": "The response clearly confirms the completed task."}
+  ],
+  "tool_findings": [],
+  "failure_categories": [],
+  "confidence": 0.96,
+  "overall_reason": "The Agent used the expected tool chain and accurately reported the verified result."
+}

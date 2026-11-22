@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-test-platform.local/schemas/target-knowledge-status-response.schema.json",
+  "title": "Target Knowledge Index Status Response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "document_id", "status", "content_sha256", "indexing_deadline", "indexed_at", "error"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "document_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "status": {"enum": ["QUEUED", "INDEXING", "READY", "FAILED"]},
+    "content_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "indexing_deadline": {"type": "string", "format": "date-time"},
+    "indexed_at": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "format": "date-time"}
+      ]
+    },
+    "error": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message", "retryable"],
+          "properties": {
+            "code": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,63}$"},
+            "message": {"type": "string", "minLength": 1, "maxLength": 2000},
+            "retryable": {"type": "boolean"}
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "READY"}}, "required": ["status"]},
+      "then": {"properties": {"indexed_at": {"type": "string"}, "error": {"type": "null"}}}
+    },
+    {
+      "if": {"properties": {"status": {"const": "FAILED"}}, "required": ["status"]},
+      "then": {"properties": {"error": {"type": "object"}}}
+    }
+  ]
+}

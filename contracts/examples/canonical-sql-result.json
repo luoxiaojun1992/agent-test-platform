@@ -1,0 +1,12 @@
+{
+  "columns": [
+    {"name": "status", "type": "STRING"}
+  ],
+  "rows": [
+    [
+      {"type": "STRING", "value": "CANCELLED"}
+    ]
+  ],
+  "ordered": true,
+  "truncated": false
+}

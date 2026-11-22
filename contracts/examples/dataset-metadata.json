@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "mysql_version": "8.4.0",
+  "timezone": "UTC",
+  "charset": "utf8mb4",
+  "collation": "utf8mb4_0900_ai_ci",
+  "sql_mode": ["STRICT_TRANS_TABLES", "NO_ZERO_DATE", "ERROR_FOR_DIVISION_BY_ZERO"],
+  "tables": [
+    {
+      "name": "orders",
+      "columns": [
+        {"name": "id", "mysql_type": "VARCHAR(32)", "nullable": false},
+        {"name": "status", "mysql_type": "VARCHAR(32)", "nullable": false},
+        {"name": "updated_at", "mysql_type": "DATETIME(6)", "nullable": false}
+      ],
+      "primary_key": ["id"],
+      "foreign_keys": [],
+      "row_count": 3
+    }
+  ],
+  "difficulty_profile": {
+    "data_complexity": 2,
+    "reasoning_complexity": 3
+  },
+  "coverage_tags": ["NORMAL", "EDGE_CASE", "AMBIGUOUS"],
+  "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+}

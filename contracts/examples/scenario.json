@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0",
+  "name": "Cancel an order",
+  "description": "A customer asks the Agent to cancel an existing order.",
+  "domain": "e-commerce",
+  "required_capabilities": ["MYSQL_QUERY", "MYSQL_EXECUTE"],
+  "business_rules": [
+    {
+      "id": "cancel-paid-order",
+      "text": "Paid but unshipped orders may be cancelled.",
+      "source": "SOURCE_REQUIREMENT",
+      "critical": true
+    },
+    {
+      "id": "reject-shipped-order",
+      "text": "Shipped orders cannot be cancelled.",
+      "source": "SOURCE_REQUIREMENT",
+      "critical": true
+    }
+  ],
+  "difficulty": "MEDIUM",
+  "difficulty_profile": {
+    "data_complexity": 2,
+    "reasoning_complexity": 3,
+    "tool_complexity": 3,
+    "ambiguity": 1,
+    "multi_step": 3,
+    "state_change_complexity": 3,
+    "adversarial_complexity": 1
+  },
+  "coverage_plan": ["NORMAL", "EDGE_CASE", "AMBIGUOUS"]
+}
