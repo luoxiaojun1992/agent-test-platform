@@ -10,8 +10,7 @@ and migrations under `migrations/` are normative.
 
 - Backend: Go modular monolith with API and worker processes.
 - Platform storage and durable queue: dedicated MySQL 8.4 LTS.
-- Test environments: validation MySQL 8.4 instance or container pool; each Dataset Revision has a validated execution schema and each Test Run uses its own
-	database (no separate Sandbox instance). The platform creates no validation MySQL accounts; it uses only the
+- Test environments: validation MySQL 8.4 instance or container pool; each Dataset Revision has a validated execution schema and each Test Run injects and removes test data in the Target's fixed database (no separate Sandbox instance; technical/08). The platform creates no validation MySQL accounts; it uses only the
 	registered Target, with several Targets allowed per Dataset Revision (architecture 16.5; technical/06 section 1.1). Test-environment credentials are entered through the UI and stored encrypted (technical/06
 	section 8.1). Platform settings come from environment variables (technical/05 section 3).
 - LLM providers: OpenAI and Ollama through an internal provider-neutral gateway.
@@ -31,6 +30,7 @@ and migrations under `migrations/` are normative.
 5. [API and implementation plan](05-api-and-implementation-plan.md)
 6. [Sandbox and security](06-sandbox-and-security.md)
 7. [Target platform SSE contract](07-target-sse-contract.md)
+8. [Run data lifecycle, target auth, and concurrency](08-run-data-lifecycle-and-target-auth.md)
 
 ## Normative Contracts
 
