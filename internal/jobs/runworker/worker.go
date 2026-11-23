@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -220,8 +221,10 @@ func (worker *Worker) process(ctx context.Context, runID string, lease run.Lease
 		return worker.store.MarkRunning(ctx, runID, lease)
 	})
 	if err != nil {
+		slog.Error("run execution failed", "run_id", runID, "error", err)
 		return err
 	}
+	slog.Info("run execution settled", "run_id", runID, "status", settlement.Status, "outcome", settlement.Outcome)
 	return worker.store.Settle(ctx, runID, lease, settlement)
 }
 
