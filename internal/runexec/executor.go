@@ -128,6 +128,13 @@ func (executor *Executor) Execute(ctx context.Context, job run.Job, markRunning 
 	if job.AgentDatabase == nil || job.AgentDatabase.Database == "" {
 		return run.Settlement{}, errors.New("the Agent has no fixed database configured")
 	}
+	quotedDB, err := sandbox.QuoteIdentifier(job.AgentDatabase.Database)
+	if err != nil {
+		return run.Settlement{}, fmt.Errorf("quote Agent database name: %w", err)
+	}
+	if _, err := admin.ExecContext(ctx, "CREATE DATABASE IF NOT EXISTS "+quotedDB+" CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci"); err != nil {
+		return run.Settlement{}, retry(fmt.Errorf("create Agent database: %w", err))
+	}
 	database, err := admin.OpenDatabase(ctx, job.AgentDatabase.Database)
 	if err != nil {
 		return run.Settlement{}, retry(fmt.Errorf("open Agent database: %w", err))
