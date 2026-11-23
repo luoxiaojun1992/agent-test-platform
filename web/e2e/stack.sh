@@ -71,7 +71,7 @@ launch worker PLATFORM_MYSQL_DSN="$PLATFORM_DSN" WORKER_OWNER=e2e-worker $KEYS \
   GENERATION_MODEL_NAME=mock-generation-v1 GENERATION_MODEL_ALIAS=generation-primary \
   JUDGE_MODEL_NAME=mock-judge-b JUDGE_MODEL_ALIAS=judge-b \
   GENERATION_ALT_MODEL_NAME=mock-generation-v2 GENERATION_ALT_MODEL_ALIAS=generation-alt "$RUN/bin/worker"
-(cd web && setsid npx vite preview --port 4173 --strictPort </dev/null >"$RUN/web.log" 2>&1 & echo $! >"$RUN/web.pid")
+(cd web && setsid npx vite preview --host 127.0.0.1 --port 4173 --strictPort </dev/null >"$RUN/web.log" 2>&1 & echo $! >"$RUN/web.pid")
 
 for url in http://127.0.0.1:8080/healthz http://127.0.0.1:18081/healthz http://127.0.0.1:18082/healthz http://127.0.0.1:4173/; do
   for _ in $(seq 1 60); do curl -fsS "$url" >/dev/null 2>&1 && break; sleep 1; done
