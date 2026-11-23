@@ -21,6 +21,7 @@ import (
 	"agent-test-platform/internal/generation"
 	"agent-test-platform/internal/httpapi"
 	"agent-test-platform/internal/modelcfg"
+	"agent-test-platform/internal/redislock"
 	runs "agent-test-platform/internal/run"
 	"agent-test-platform/internal/runexec"
 	"agent-test-platform/internal/secrets"
@@ -28,6 +29,7 @@ import (
 	validationdb "agent-test-platform/internal/validationdb"
 
 	mysqldriver "github.com/go-sql-driver/mysql"
+	"github.com/redis/go-redis/v9"
 )
 
 const (
@@ -123,6 +125,11 @@ func run() error {
 	runService, err := runs.NewService(runStore)
 	if err != nil {
 		return fmt.Errorf("create run service: %w", err)
+	}
+	if configuration.RedisAddr != "" {
+		redisClient := redis.NewClient(&redis.Options{Addr: configuration.RedisAddr})
+		defer func() { _ = redisClient.Close() }()
+		runService.SetAgentLocker(redislock.New(redisClient, 0))
 	}
 	handler, err := httpapi.NewServer(service, secretService, targetService, agentService, catalogService, runService, validator, configuration.BearerToken)
 	if err != nil {

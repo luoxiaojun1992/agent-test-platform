@@ -17,6 +17,7 @@ var both = []string{c1, c2}
 type fakeStore struct {
 	unknownJudge bool
 	agentDB      bool
+	agentBusy    bool
 	reevalErr    error
 	reeval       []string
 	inserted     []NewRun
@@ -30,6 +31,9 @@ func (s *fakeStore) TestCases(context.Context, []string) ([]Case, error) {
 }
 func (s *fakeStore) AgentInfo(context.Context, string) (bool, bool, error) {
 	return true, s.agentDB, nil
+}
+func (s *fakeStore) AgentHasActiveRun(context.Context, string) (bool, error) {
+	return s.agentBusy, nil
 }
 func (s *fakeStore) FindCreation(_ context.Context, key string) (Creation, error) {
 	if key != s.key || s.key == "" {

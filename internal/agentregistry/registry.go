@@ -66,6 +66,11 @@ type AgentInput struct {
 	ContractVersion      string           `json:"contract_version"`
 	ToolEvaluationMode   string           `json:"tool_evaluation_mode"`
 	ToolCatalog          []ToolDefinition `json:"tool_catalog"`
+	// ClientID, ClientSecretRef and TokenURL configure OAuth 2.0 client credentials. When TokenURL
+	// is set, the platform obtains a short-lived access token instead of the static bearer (08).
+	ClientID        *string `json:"client_id,omitempty"`
+	ClientSecretRef *string `json:"client_secret_ref,omitempty"`
+	TokenURL        *string `json:"token_url,omitempty"`
 }
 
 // Agent is a stored Agent under test. It omits the token reference.
@@ -82,6 +87,10 @@ type Agent struct {
 	CreatedAt          time.Time        `json:"created_at"`
 	// TargetBearerTokenRef is stored but never serialized back to clients.
 	TargetBearerTokenRef string `json:"-"`
+	ClientID             string `json:"client_id,omitempty"`
+	TokenURL             string `json:"token_url,omitempty"`
+	// ClientSecretRef is stored but never serialized back to clients.
+	ClientSecretRef string `json:"-"`
 }
 
 // ToolDefinition describes one Tool the Agent may call.
@@ -110,6 +119,23 @@ func (input AgentInput) Validate() error {
 	}
 	if err := secrets.ValidateName(input.TargetBearerTokenRef); err != nil {
 		return fmt.Errorf("target_bearer_token_ref: %w", err)
+	}
+	if input.TokenURL != nil && strings.TrimSpace(*input.TokenURL) != "" {
+		oauthURL, err := url.Parse(*input.TokenURL)
+		if err != nil || (oauthURL.Scheme != "http" && oauthURL.Scheme != "https") || oauthURL.Host == "" || len(*input.TokenURL) > 2048 {
+			return invalid("token_url must be an http or https URL of at most 2048 characters")
+		}
+		if input.ClientID == nil || strings.TrimSpace(*input.ClientID) == "" {
+			return invalid("client_id is required when token_url is set")
+		}
+		if input.ClientSecretRef == nil || strings.TrimSpace(*input.ClientSecretRef) == "" {
+			return invalid("client_secret_ref is required when token_url is set")
+		}
+		if err := secrets.ValidateName(*input.ClientSecretRef); err != nil {
+			return fmt.Errorf("client_secret_ref: %w", err)
+		}
+	} else if input.ClientID != nil || input.ClientSecretRef != nil {
+		return invalid("client_id and client_secret_ref require token_url")
 	}
 	if n := len([]rune(input.TargetModel)); n < 1 || n > 255 {
 		return invalid("target_model must contain 1-255 characters")
@@ -227,6 +253,15 @@ func (service *Service) CreateAgent(ctx context.Context, key string, input Agent
 	if !exists {
 		return Agent{}, ErrSecretNotFound
 	}
+	if input.ClientSecretRef != nil && strings.TrimSpace(*input.ClientSecretRef) != "" {
+		clientSecretExists, err := service.secrets.Exists(ctx, *input.ClientSecretRef)
+		if err != nil {
+			return Agent{}, fmt.Errorf("check client secret: %w", err)
+		}
+		if !clientSecretExists {
+			return Agent{}, ErrSecretNotFound
+		}
+	}
 	digest, err := digestOf(input)
 	if err != nil {
 		return Agent{}, err
@@ -235,6 +270,7 @@ func (service *Service) CreateAgent(ctx context.Context, key string, input Agent
 		ID: ulid.Make().String(), Name: input.Name, Description: input.Description, DatabaseProfileID: input.DatabaseProfileID,
 		ChatEndpoint: input.ChatEndpoint, TargetModel: input.TargetModel, ContractVersion: input.ContractVersion,
 		ToolEvaluationMode: input.ToolEvaluationMode, ToolCatalog: input.ToolCatalog, TargetBearerTokenRef: input.TargetBearerTokenRef,
+		ClientID: derefString(input.ClientID), ClientSecretRef: derefString(input.ClientSecretRef), TokenURL: derefString(input.TokenURL),
 	}, IdempotencyKey: key, ConfigSHA256: digest}
 	stored, err := service.store.InsertAgent(ctx, record)
 	if err == nil {
@@ -294,6 +330,13 @@ func pageArgs(cursor string, limit int) (*Cursor, error) {
 		return nil, ErrInvalidCursor
 	}
 	return &decoded, nil
+}
+
+func derefString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 func digestOf(value any) (string, error) {

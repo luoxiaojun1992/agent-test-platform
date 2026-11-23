@@ -170,6 +170,8 @@ func writeRunError(writer http.ResponseWriter, err error) {
 		writeError(writer, http.StatusNotFound, "NOT_FOUND", "resource is not found", false, nil)
 	case errors.Is(err, run.ErrAgentDatabaseMissing):
 		writeError(writer, http.StatusConflict, "AGENT_DATABASE_NOT_CONFIGURED", err.Error(), false, nil)
+	case errors.Is(err, run.ErrAgentBusy):
+		writeError(writer, http.StatusConflict, "AGENT_BUSY", err.Error(), false, nil)
 	case errors.Is(err, run.ErrConflict), errors.Is(err, run.ErrIdempotencyConflict):
 		writeError(writer, http.StatusConflict, "CONFLICT", err.Error(), false, nil)
 	default:

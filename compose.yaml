@@ -50,6 +50,17 @@ services:
       start_period: 20s
     networks: [target]
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [platform]
+
   mock-llm:
     build:
       context: .
@@ -119,10 +130,13 @@ services:
       SECRET_ENCRYPTION_KEY_ID: ${SECRET_ENCRYPTION_KEY_ID:-k1}
       SECRET_ENCRYPTION_KEY_IDS: ${SECRET_ENCRYPTION_KEY_IDS:-k1}
       ATP_ENCRYPTION_KEY_K1: ${ATP_ENCRYPTION_KEY_K1:?set ATP_ENCRYPTION_KEY_K1}
+      REDIS_ADDR: redis:6379
     ports:
       - "${API_PORT:-8080}:8080"
     depends_on:
       platform-mysql:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/healthz"]
