@@ -43,7 +43,7 @@ func (*fakeRunService) Benchmark(context.Context, []string) ([]run.BenchmarkEntr
 
 func TestRunRoutes(t *testing.T) {
 	server := agentTestServer(t, &fakeAgentService{})
-	agent := `"agent_version_id":"01ARZ3NDEKTSV4RRFFQ69G5FAV","test_case_revision_ids":["01ARZ3NDEKTSV4RRFFQ69G5FAV"]`
+	agent := `"agent_id":"01ARZ3NDEKTSV4RRFFQ69G5FAV","test_case_revision_ids":["01ARZ3NDEKTSV4RRFFQ69G5FAV"]`
 	idem := map[string]string{"Idempotency-Key": "key-12345678"}
 	cases := []struct {
 		method, path, body string
@@ -52,7 +52,7 @@ func TestRunRoutes(t *testing.T) {
 	}{
 		{http.MethodPost, "/api/v1/test-runs", `{` + agent + `}`, true, http.StatusAccepted},
 		{http.MethodPost, "/api/v1/test-runs", `{` + agent + `}`, false, http.StatusBadRequest},
-		{http.MethodPost, "/api/v1/test-runs", `{"agent_version_id":"01ARZ3NDEKTSV4RRFFQ69G5FAV"}`, true, http.StatusBadRequest},
+		{http.MethodPost, "/api/v1/test-runs", `{"agent_id":"01ARZ3NDEKTSV4RRFFQ69G5FAV"}`, true, http.StatusBadRequest},
 		{http.MethodPost, "/api/v1/test-runs", `{` + agent + `,"repetitions":11}`, true, http.StatusBadRequest},
 		{http.MethodGet, "/api/v1/benchmark?test_case_revision_id=01ARZ3NDEKTSV4RRFFQ69G5FAV", "", false, http.StatusOK},
 		{http.MethodGet, "/api/v1/test-runs", "", false, http.StatusOK},
@@ -92,7 +92,7 @@ func doSuiteRequest(server *Server, method, path, body string, headers map[strin
 
 func TestRunCreateErrors(t *testing.T) {
 	server := agentTestServer(t, &fakeAgentService{})
-	body := `{"agent_version_id":"01ARZ3NDEKTSV4RRFFQ69G5FAV","test_case_revision_ids":["01ARZ3NDEKTSV4RRFFQ69G5FAV"]}`
+	body := `{"agent_id":"01ARZ3NDEKTSV4RRFFQ69G5FAV","test_case_revision_ids":["01ARZ3NDEKTSV4RRFFQ69G5FAV"]}`
 	for key, want := range map[string]int{"missing-key-1234": http.StatusNotFound, "unbound-key-1234": http.StatusConflict} {
 		if r := doSuiteRequest(server, http.MethodPost, "/api/v1/test-runs", body, map[string]string{"Idempotency-Key": key}); r.Code != want {
 			t.Errorf("%s = %d %s, want %d", key, r.Code, r.Body, want)

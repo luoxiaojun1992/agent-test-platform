@@ -58,7 +58,7 @@ const overview = {
     { kind: 'datasets', resources: 1, revisions: 1, usable_revisions: 1 },
     { kind: 'test_cases', resources: 3, revisions: 3, usable_revisions: 3 },
   ],
-  agents: { agents: 2, versions: 3 },
+  agents: { agents: 2 },
   run_statuses: [{ status: 'COMPLETED', count: 5 }, { status: 'RUNNING', count: 1 }],
   generation_jobs: [{ kind: 'TEST_CASES', status: 'COMPLETED', count: 2 }],
   daily_runs: [
@@ -67,7 +67,7 @@ const overview = {
   ],
   daily_assets: [{ date: '2026-11-19', scenarios: 0, datasets: 0, test_cases: 0 }, { date: '2026-11-20', scenarios: 1, datasets: 1, test_cases: 3 }],
   score_distribution: [{ from: 0, to: 20, count: 0 }, { from: 20, to: 40, count: 0 }, { from: 40, to: 60, count: 1 }, { from: 60, to: 80, count: 0 }, { from: 80, to: 100, count: 3 }],
-  by_agent_version: [{ agent_name: 'bot', version: 'v1', agent_version_id: 'V', runs: 6, evaluated: 4, passed: 3, pass_rate: 75, avg_score: 80 }],
+  by_agent: [{ agent_name: 'bot', agent_id: 'V', runs: 6, evaluated: 4, passed: 3, pass_rate: 75, avg_score: 80 }],
 }
 
 const mocked = vi.hoisted(() => ({ getAnalytics: vi.fn(), listModels: vi.fn(), listRuns: vi.fn() }))
@@ -89,7 +89,7 @@ describe('Dashboard', () => {
     expect(stat('时间内运行数')).toHaveTextContent('6')
     expect(stat('通过率')).toHaveTextContent('75%')
     expect(stat('测试用例（可用/全部版本）')).toHaveTextContent('3 / 3')
-    expect(stat('Agent / 版本')).toHaveTextContent('2 / 3')
+    expect(stat('Agent')).toHaveTextContent('2')
     expect(screen.getByRole('img', { name: '每日通过率' })).toBeInTheDocument()
     expect(screen.getByRole('img', { name: '每日运行数与通过数' })).toBeInTheDocument()
     expect(mocked.getAnalytics).toHaveBeenLastCalledWith('tok', 14)

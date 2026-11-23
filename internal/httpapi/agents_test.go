@@ -12,22 +12,19 @@ import (
 	"agent-test-platform/internal/agentregistry"
 )
 
-type fakeAgentService struct{ lastVersion agentregistry.VersionInput }
+type fakeAgentService struct{}
 
 func (f *fakeAgentService) CreateAgent(_ context.Context, _ string, in agentregistry.AgentInput) (agentregistry.Agent, error) {
-	return agentregistry.Agent{ID: "01JZ0000000000000000000000", AgentInput: in, CreatedAt: time.Unix(0, 0).UTC()}, nil
+	return agentregistry.Agent{
+		ID: "01JZ0000000000000000000000", Name: in.Name, Description: in.Description, DatabaseProfileID: in.DatabaseProfileID,
+		ChatEndpoint: in.ChatEndpoint, TargetModel: in.TargetModel, ContractVersion: in.ContractVersion,
+		ToolEvaluationMode: in.ToolEvaluationMode, ToolCatalog: in.ToolCatalog, CreatedAt: time.Unix(0, 0).UTC(),
+	}, nil
 }
 func (f *fakeAgentService) GetAgent(context.Context, string) (agentregistry.Agent, error) {
 	return agentregistry.Agent{}, agentregistry.ErrNotFound
 }
 func (f *fakeAgentService) ListAgents(context.Context, string, int) ([]agentregistry.Agent, string, error) {
-	return nil, "", nil
-}
-func (f *fakeAgentService) CreateVersion(_ context.Context, _ string, _ string, in agentregistry.VersionInput) (agentregistry.Version, error) {
-	f.lastVersion = in
-	return agentregistry.Version{Version: in.Version}, nil
-}
-func (f *fakeAgentService) ListVersions(context.Context, string, string, int) ([]agentregistry.Version, string, error) {
 	return nil, "", nil
 }
 
@@ -52,10 +49,11 @@ func doAgentRequest(server *Server, method, path, body string) *httptest.Respons
 
 func TestCreateAgentAndList(t *testing.T) {
 	server := agentTestServer(t, &fakeAgentService{})
-	if r := doAgentRequest(server, http.MethodPost, "/api/v1/agents", `{"name":"a"}`); r.Code != http.StatusCreated {
+	base := `{"chat_endpoint":"https://agent.example/chat","target_bearer_token_ref":"tok","target_model":"m","contract_version":"1.0","tool_evaluation_mode":"SESSION_LLM_ONLY",`
+	if r := doAgentRequest(server, http.MethodPost, "/api/v1/agents", base+`"name":"a"}`); r.Code != http.StatusCreated {
 		t.Fatalf("create = %d %s", r.Code, r.Body)
 	}
-	if r := doAgentRequest(server, http.MethodPost, "/api/v1/agents", `{"name":""}`); r.Code != http.StatusBadRequest {
+	if r := doAgentRequest(server, http.MethodPost, "/api/v1/agents", base+`"name":""}`); r.Code != http.StatusBadRequest {
 		t.Fatalf("empty name = %d", r.Code)
 	}
 	r := doAgentRequest(server, http.MethodGet, "/api/v1/agents", "")
@@ -67,10 +65,10 @@ func TestCreateAgentAndList(t *testing.T) {
 	}
 }
 
-func TestCreateAgentVersionSchemaRules(t *testing.T) {
+func TestCreateAgentSchemaRules(t *testing.T) {
 	server := agentTestServer(t, &fakeAgentService{})
-	base := `{"version":"v1","chat_endpoint":"https://agent.example/chat","target_bearer_token_ref":"tok","target_model":"m","contract_version":"1.0",`
-	path := "/api/v1/agents/01JZ0000000000000000000000/versions"
+	base := `{"name":"a","chat_endpoint":"https://agent.example/chat","target_bearer_token_ref":"tok","target_model":"m","contract_version":"1.0",`
+	path := "/api/v1/agents"
 	tool := `[{"name":"search","description":"d","input_schema":{}}]`
 	cases := []struct {
 		body string

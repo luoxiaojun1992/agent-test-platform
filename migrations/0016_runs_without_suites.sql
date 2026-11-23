@@ -3,7 +3,7 @@
 
 ALTER TABLE test_run DROP FOREIGN KEY fk_test_run_snapshot;
 
-ALTER TABLE test_run ADD KEY ix_test_run_agent_case (agent_version_id, test_case_revision_id);
+ALTER TABLE test_run ADD KEY ix_test_run_agent_case (agent_id, test_case_revision_id);
 
 ALTER TABLE test_run
     DROP KEY uq_test_run_identity,

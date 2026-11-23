@@ -12,17 +12,14 @@ import (
 )
 
 const (
-	agentRequestSchema        = "schemas/agent-request.schema.json"
-	agentVersionRequestSchema = "schemas/agent-version-request.schema.json"
+	agentRequestSchema = "schemas/agent-request.schema.json"
 )
 
-// AgentService manages Agents and Agent Versions.
+// AgentService manages Agents under test.
 type AgentService interface {
 	CreateAgent(context.Context, string, agentregistry.AgentInput) (agentregistry.Agent, error)
 	GetAgent(context.Context, string) (agentregistry.Agent, error)
 	ListAgents(context.Context, string, int) ([]agentregistry.Agent, string, error)
-	CreateVersion(context.Context, string, string, agentregistry.VersionInput) (agentregistry.Version, error)
-	ListVersions(context.Context, string, string, int) ([]agentregistry.Version, string, error)
 }
 
 func idempotencyKeyOf(writer http.ResponseWriter, request *http.Request) (string, bool) {
@@ -89,39 +86,6 @@ func (server *Server) listAgents(writer http.ResponseWriter, request *http.Reque
 	}
 	if items == nil {
 		items = []agentregistry.Agent{}
-	}
-	writePage(writer, items, next)
-}
-
-func (server *Server) createAgentVersion(writer http.ResponseWriter, request *http.Request) {
-	key, ok := idempotencyKeyOf(writer, request)
-	if !ok {
-		return
-	}
-	var input agentregistry.VersionInput
-	if !server.readValidated(writer, request, agentVersionRequestSchema, &input) {
-		return
-	}
-	version, err := server.agentService.CreateVersion(request.Context(), request.PathValue("agentId"), key, input)
-	if err != nil {
-		writeAgentError(writer, err)
-		return
-	}
-	writeJSON(writer, http.StatusCreated, version)
-}
-
-func (server *Server) listAgentVersions(writer http.ResponseWriter, request *http.Request) {
-	cursor, limit, ok := pageParams(writer, request)
-	if !ok {
-		return
-	}
-	items, next, err := server.agentService.ListVersions(request.Context(), request.PathValue("agentId"), cursor, limit)
-	if err != nil {
-		writeAgentError(writer, err)
-		return
-	}
-	if items == nil {
-		items = []agentregistry.Version{}
 	}
 	writePage(writer, items, next)
 }

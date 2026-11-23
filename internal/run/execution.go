@@ -31,7 +31,7 @@ type Lease struct {
 	MaxAttempts  int
 }
 
-// AgentSpec is the immutable Agent Version configuration needed to call the Target Agent.
+// AgentSpec is the immutable Agent configuration needed to call the Target Agent.
 type AgentSpec struct {
 	Endpoint  string
 	TokenRef  string

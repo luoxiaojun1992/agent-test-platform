@@ -16,7 +16,7 @@ func TestNormalizeRequestAppliesOnlyDeterministicDefaults(t *testing.T) {
 	if normalized.AgentMode != "TASK" || normalized.TestCaseCount != 10 || !normalized.AutoActivate {
 		t.Fatalf("defaults = %#v", normalized)
 	}
-	if !normalized.GenerateDataset || normalized.DatabaseProfileID != nil || normalized.TargetAgentVersionID != nil {
+	if !normalized.GenerateDataset || normalized.DatabaseProfileID != nil || normalized.TargetAgentID != nil {
 		t.Fatalf("target defaults = %#v", normalized)
 	}
 	if normalized.Domain != nil || normalized.Capabilities != nil || normalized.Difficulty != nil || normalized.Coverage != nil {
@@ -30,7 +30,7 @@ func TestNormalizeRequestAppliesOnlyDeterministicDefaults(t *testing.T) {
 	if err := json.Unmarshal(encoded, &object); err != nil {
 		t.Fatal(err)
 	}
-	for _, field := range []string{"target_agent_version_id", "database_profile_id", "domain", "capabilities", "difficulty", "coverage"} {
+	for _, field := range []string{"target_agent_id", "database_profile_id", "domain", "capabilities", "difficulty", "coverage"} {
 		if value, exists := object[field]; !exists || value != nil {
 			t.Fatalf("%s = %#v, want explicit null", field, value)
 		}

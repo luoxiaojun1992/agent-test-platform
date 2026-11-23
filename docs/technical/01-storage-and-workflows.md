@@ -207,10 +207,10 @@ a `generation_package` row.
 
 ## 7. Test Run Workflow
 
-A Run is created directly from a Test Case Revision and an Agent Version (`POST /api/v1/test-runs`); there is no Suite or Snapshot. The Test Case Revision already references its Scenario Revision and Dataset Revision.
+A Run is created directly from a Test Case Revision and an Agent (`POST /api/v1/test-runs`); there is no Suite or Snapshot. The Test Case Revision already references its Scenario Revision and Dataset Revision.
 
 1. Claim the Run work item.
-2. Load the Test Case Revision, its Dataset Revision (`schema_sql`, `seed_sql`) and the Agent Version, with the Agent's database configuration.
+2. Load the Test Case Revision, its Dataset Revision (`schema_sql`, `seed_sql`) and the Agent, with the Agent's database configuration.
 3. Validate the Dataset's SQL against the allowlist, then create a dedicated `run_<ULID>` database on the **Agent's own database server** with the account configured on the Agent, and execute the Dataset's own `schema_sql` and `seed_sql` in it (technical/06 sections 3.2 and 3.3). Nothing is exported from or imported through Platform MySQL.
 4. Verify preconditions against the new database.
 5. Capture the before-state, then call the Agent once; its prompt names the Run database, and no database credential is sent. Capture its final output and structured Tool records.
@@ -230,7 +230,7 @@ the Agent starts are `INVALID_TEST_DATA` or `INFRA_ERROR` and are excluded from 
 
 | From | Event | To | Required Action |
 |---|---|---|---|
-| `QUEUED` | worker claims lease | `PREPARING` | load the Test Case, Dataset and Agent Version |
+| `QUEUED` | worker claims lease | `PREPARING` | load the Test Case, Dataset and Agent |
 | `PREPARING` | fixture and preconditions pass | `RUNNING` | call the Agent |
 | `PREPARING` | fixture invalid | `INVALID_TEST_DATA` | cleanup, no Judge |
 | `PREPARING` | infrastructure fails (retries exhausted) | `COMPLETED` | outcome `INFRA_ERROR`, cleanup, no Judge |
@@ -258,7 +258,7 @@ for the Run database is the Agent's configured account, resolved from the `secre
 ### 7.3 Content integrity
 
 Revisions are immutable and carry a SHA-256 content digest, stored when they are published. A Run reads the Test Case, Dataset and Scenario
-Revisions it references by ID at execution time. Because published Revisions cannot change, a Run is reproducible from the pair (Test Case Revision ID, Agent Version ID); no per-batch digest is needed.
+Revisions it references by ID at execution time. Because published Revisions cannot change, a Run is reproducible from the pair (Test Case Revision ID, Agent ID); no per-batch digest is needed.
 
 ## 8. Idempotency
 
@@ -268,7 +268,7 @@ Revisions it references by ID at execution time. Because published Revisions can
 | Store generation stage | job + stage + stage attempt |
 | `create_test_case` | job + client case ID |
 | Publish package | generation job ID |
-| Create Runs | request `Idempotency-Key` + request digest (agent version, case revisions, repetitions); one row per case revision and repetition |
+| Create Runs | request `Idempotency-Key` + request digest (agent, case revisions, repetitions); one row per case revision and repetition |
 | Store Tool Call | run + sequence |
 | Create Evaluation | run + attempt number; a re-evaluation is a new Run keyed by its request `Idempotency-Key` |
 

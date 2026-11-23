@@ -48,7 +48,7 @@ export function RunDetailPage({ token }: { token: string }) {
             { label: '结论', value: <PassTag pass={data.pass} /> },
             { label: '确定性得分', value: <Score value={data.deterministic_score} /> },
             { label: '最终得分', value: <Score value={data.final_score} /> },
-            { label: 'Agent 版本', value: <Mono>{data.agent_version_id}</Mono> },
+            { label: 'Agent', value: <Mono>{data.agent_id}</Mono> },
             { label: '测试用例版本', value: <Mono>{data.test_case_revision_id}</Mono> },
             { label: '创建时间', value: formatDate(data.created_at) },
           ]} />

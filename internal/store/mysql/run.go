@@ -27,7 +27,7 @@ func NewRunStore(database *sql.DB) (*RunStore, error) {
 const (
 	latestEvaluation = `(SELECT e.%s FROM evaluation_attempt e WHERE e.test_run_id = r.id AND e.status = 'COMPLETED' ORDER BY e.attempt_no DESC LIMIT 1)`
 
-	runColumns = `r.id, r.status, r.execution_outcome, r.test_case_revision_id, r.dataset_revision_id, r.agent_version_id,
+	runColumns = `r.id, r.status, r.execution_outcome, r.test_case_revision_id, r.dataset_revision_id, r.agent_id,
 r.final_output, r.precondition_json, r.postcondition_json, r.state_diff_json, r.deterministic_json, r.error_json,
 r.deterministic_score, %s, %s, r.created_at`
 )
@@ -47,7 +47,7 @@ func scanRun(row rowScanner) (run.Run, error) {
 	var pre, post, diff, det, errJSON []byte
 	var detScore, finalScore sql.NullFloat64
 	var pass sql.NullBool
-	if err := row.Scan(&item.ID, &item.Status, &outcome, &item.TestCaseRevisionID, &item.DatasetRevisionID, &item.AgentVersionID,
+	if err := row.Scan(&item.ID, &item.Status, &outcome, &item.TestCaseRevisionID, &item.DatasetRevisionID, &item.AgentID,
 		&output, &pre, &post, &diff, &det, &errJSON, &detScore, &finalScore, &pass, &item.CreatedAt); err != nil {
 		return item, err
 	}
@@ -108,14 +108,14 @@ FROM test_case_revision WHERE id IN (`+strings.TrimSuffix(strings.Repeat("?,", l
 	return cases, nil
 }
 
-func (store *RunStore) AgentVersionInfo(ctx context.Context, id string) (bool, bool, error) {
+func (store *RunStore) AgentInfo(ctx context.Context, id string) (bool, bool, error) {
 	var profile sql.NullString
-	err := store.database.QueryRowContext(ctx, `SELECT a.database_profile_id FROM agent_version v JOIN agent a ON a.id = v.agent_id WHERE v.id = ?`, id).Scan(&profile)
+	err := store.database.QueryRowContext(ctx, `SELECT database_profile_id FROM agent WHERE id = ?`, id).Scan(&profile)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, false, nil
 	}
 	if err != nil {
-		return false, false, fmt.Errorf("load Agent Version: %w", err)
+		return false, false, fmt.Errorf("load Agent: %w", err)
 	}
 	return true, profile.Valid, nil
 }
@@ -145,7 +145,7 @@ func (store *RunStore) FindCreation(ctx context.Context, requestKey string) (run
 	return creation, nil
 }
 
-func (store *RunStore) InsertRuns(ctx context.Context, agentVersionID, requestKey, requestSHA256 string, runs []run.NewRun) error {
+func (store *RunStore) InsertRuns(ctx context.Context, agentID, requestKey, requestSHA256 string, runs []run.NewRun) error {
 	tx, err := store.database.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin Run insert: %w", err)
@@ -154,9 +154,9 @@ func (store *RunStore) InsertRuns(ctx context.Context, agentVersionID, requestKe
 	for _, item := range runs {
 		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO test_run (id, idempotency_key, request_key, request_sha256, test_case_revision_id, dataset_revision_id,
-agent_version_id, repetition_no, status, input_text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'QUEUED', ?)`,
+agent_id, repetition_no, status, input_text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'QUEUED', ?)`,
 			item.ID, item.RowKey, requestKey, requestSHA256, item.TestCaseRevisionID, item.DatasetRevisionID,
-			agentVersionID, item.Repetition, item.Prompt); err != nil {
+			agentID, item.Repetition, item.Prompt); err != nil {
 			if isDuplicate(err) {
 				return run.ErrDuplicate
 			}
@@ -193,9 +193,9 @@ func (store *RunStore) GetRun(ctx context.Context, id string) (run.Run, error) {
 func (store *RunStore) ListRuns(ctx context.Context, filter run.Filter, after *run.Cursor, limit int) ([]run.Run, error) {
 	query := selectRun + ` WHERE 1 = 1`
 	var args []any
-	if filter.AgentVersionID != "" {
-		query += ` AND r.agent_version_id = ?`
-		args = append(args, filter.AgentVersionID)
+	if filter.AgentID != "" {
+		query += ` AND r.agent_id = ?`
+		args = append(args, filter.AgentID)
 	}
 	if filter.TestCaseRevisionID != "" {
 		query += ` AND r.test_case_revision_id = ?`
@@ -376,13 +376,13 @@ func (store *RunStore) Benchmark(ctx context.Context, caseIDs []string) ([]run.B
 		caseArgs[i] = id
 	}
 	rows, err := store.database.QueryContext(ctx,
-		`SELECT r.agent_version_id, COUNT(*),
+		`SELECT r.agent_id, COUNT(*),
 COALESCE(100 * AVG(CASE WHEN `+fmt.Sprintf(latestEvaluation, "pass")+` THEN 1 ELSE 0 END), 0),
 COALESCE(AVG(`+fmt.Sprintf(latestEvaluation, "final_score")+`), 0),
 COALESCE(SUM(CASE WHEN JSON_CONTAINS(r.deterministic_json, '{"critical": true, "pass": false}') THEN 1 ELSE 0 END), 0)
 FROM test_run r
 WHERE r.test_case_revision_id IN (`+strings.TrimSuffix(strings.Repeat("?,", len(caseIDs)), ",")+`) AND r.status = 'COMPLETED' AND r.execution_outcome IS NOT NULL AND r.execution_outcome <> 'INFRA_ERROR'
-GROUP BY r.agent_version_id ORDER BY r.agent_version_id`, caseArgs...)
+GROUP BY r.agent_id ORDER BY r.agent_id`, caseArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("aggregate benchmark: %w", err)
 	}
@@ -390,7 +390,7 @@ GROUP BY r.agent_version_id ORDER BY r.agent_version_id`, caseArgs...)
 	items := []run.BenchmarkEntry{}
 	for rows.Next() {
 		var item run.BenchmarkEntry
-		if err := rows.Scan(&item.AgentVersionID, &item.RunCount, &item.PassRate, &item.AvgScore, &item.CriticalFailures); err != nil {
+		if err := rows.Scan(&item.AgentID, &item.RunCount, &item.PassRate, &item.AvgScore, &item.CriticalFailures); err != nil {
 			return nil, fmt.Errorf("scan benchmark: %w", err)
 		}
 		items = append(items, item)

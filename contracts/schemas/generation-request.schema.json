@@ -7,7 +7,7 @@
   "required": ["description"],
   "properties": {
     "description": {"type": "string", "minLength": 1, "maxLength": 4000},
-    "target_agent_version_id": {"type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"},
+    "target_agent_id": {"type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"},
     "generate_dataset": {"type": "boolean", "default": true},
     "database_profile_id": {"type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"},
     "validation_db_ids": {

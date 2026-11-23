@@ -1,6 +1,6 @@
 {
   "description": "为电商客服 Agent 生成订单取消测试，覆盖已付款未发货、已发货和请求不明确的情况。",
-  "target_agent_version_id": "01K4Z6Y7X8W9V0T1S2R3Q4P5N6",
+  "target_agent_id": "01K4Z6Y7X8W9V0T1S2R3Q4P5N6",
   "generate_dataset": true,
   "domain": "e-commerce",
   "agent_mode": "TASK",

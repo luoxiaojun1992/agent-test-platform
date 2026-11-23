@@ -40,7 +40,7 @@ function Summary({ data }: { data: AnalyticsOverview }) {
       <div className="stat"><span>平均得分</span><strong>{scoredRuns ? (weighted / scoredRuns).toFixed(1) : '—'}</strong></div>
       <div className="stat"><span>进行中</span><strong>{running}</strong></div>
       <div className="stat"><span>测试用例（可用/全部版本）</span><strong>{assets.test_cases?.usable_revisions ?? 0} / {assets.test_cases?.revisions ?? 0}</strong></div>
-      <div className="stat"><span>Agent / 版本</span><strong>{data.agents.agents} / {data.agents.versions}</strong></div>
+      <div className="stat"><span>Agent</span><strong>{data.agents.agents}</strong></div>
     </div>
   )
 }
@@ -94,9 +94,9 @@ export function Dashboard({ token }: { token: string }) {
             {data && <DonutChart label="运行状态占比" items={data.run_statuses.map((item) => ({ name: statusText[item.status] ?? item.status, value: item.count, color: statusColor[item.status] ?? '#a9b0bd' }))} />}
           </div>
         </Card>
-        <Card title="各 Agent 版本通过率">
+        <Card title="各 Agent 通过率">
           <div className="chart-body">
-            {data && <HBarChart label="各 Agent 版本通过率" unit="%" items={data.by_agent_version.filter((item) => item.pass_rate !== null).map((item) => ({ name: `${item.agent_name} · ${item.version}`, value: item.pass_rate ?? 0, color: '#2f9e6f' }))} />}
+            {data && <HBarChart label="各 Agent 通过率" unit="%" items={data.by_agent.filter((item) => item.pass_rate !== null).map((item) => ({ name: item.agent_name, value: item.pass_rate ?? 0, color: '#2f9e6f' }))} />}
           </div>
         </Card>
         <Card title="测试资产数量">

@@ -9,7 +9,7 @@ import { RevisionSelect, notDeprecated, revisionTitle, usableAsInput } from './r
 import { RunTestsDialog } from './RunTestsDialog'
 
 vi.mock('./api2', async (importOriginal) => ({ ...(await importOriginal<typeof import('./api2')>()), searchRevisions: vi.fn(), createGenerationJobRequest: vi.fn(),
-  listAgents: vi.fn(), listAgentVersions: vi.fn(), createRuns: vi.fn() }))
+  listAgents: vi.fn(), createRuns: vi.fn() }))
 vi.mock('./api', async (importOriginal) => ({ ...(await importOriginal<typeof import('./api')>()), listValidationDbs: vi.fn(async () => ({ items: [{ id: 'T1', name: 'target-a' }], next_cursor: null })) }))
 
 const mocked = vi.mocked(api2)
@@ -129,36 +129,30 @@ describe('GenerateAssetDialog', () => {
 })
 
 describe('RunTestsDialog', () => {
-  const version = { id: 'V1', agent_id: 'A1', version: 'v1', chat_endpoint: '', target_model: 'm', contract_version: '1.0', tool_evaluation_mode: 'SESSION_LLM_ONLY' as const, tool_catalog: null, created_at: '' }
+  const agent = { id: 'A1', name: 'mock-agent', database_profile_id: 'DB1', chat_endpoint: 'http://x', target_model: 'm', contract_version: '1.0', tool_evaluation_mode: 'SESSION_LLM_ONLY' as const, tool_catalog: null, created_at: '' }
 
-  it('runs the picked cases on the chosen Agent version without any suite or snapshot', async () => {
+  it('runs the picked cases on the chosen Agent without any suite or snapshot', async () => {
     mocked.searchRevisions.mockResolvedValue({ items: [item('CASE1', { content: { prompt: 'p1' } })], next_cursor: null })
-    mocked.listAgents.mockResolvedValue({ items: [{ id: 'A1', name: 'mock-agent', database_profile_id: 'DB1', created_at: '' }], next_cursor: null })
-    mocked.listAgentVersions.mockResolvedValue({ items: [version], next_cursor: null })
+    mocked.listAgents.mockResolvedValue({ items: [agent], next_cursor: null })
     mocked.createRuns.mockResolvedValue({ run_ids: ['R1'] })
     renderWith(<RunTestsDialog token="tok" onClose={vi.fn()} />)
     const start = screen.getByRole('button', { name: /运行 0 个用例/ })
     expect(start).toBeDisabled()
     await userEvent.click(screen.getByLabelText('测试用例'))
     await userEvent.click(within(await screen.findByRole('listbox')).getByRole('option'))
-    await screen.findByRole('option', { name: /^(mock-agent|a)$/ })
+    await screen.findByRole('option', { name: /mock-agent/ })
     await userEvent.selectOptions(screen.getByLabelText('选择 Agent'), 'A1')
-    await screen.findByRole('option', { name: /v1/ })
-    await userEvent.selectOptions(screen.getByLabelText('选择 Agent 版本'), 'V1')
     expect(await screen.findByText(/种子数据会写入该 Agent 配置的数据库/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /运行 1 个用例/ }))
-    await waitFor(() => expect(mocked.createRuns).toHaveBeenCalledWith('tok', { agent_version_id: 'V1', test_case_revision_ids: ['CASE1'], repetitions: 1 }))
+    await waitFor(() => expect(mocked.createRuns).toHaveBeenCalledWith('tok', { agent_id: 'A1', test_case_revision_ids: ['CASE1'], repetitions: 1 }))
   })
 
   it('warns when the Agent has no database configured', async () => {
     mocked.searchRevisions.mockResolvedValue({ items: [], next_cursor: null })
-    mocked.listAgents.mockResolvedValue({ items: [{ id: 'A1', name: 'a', database_profile_id: null, created_at: '' }], next_cursor: null })
-    mocked.listAgentVersions.mockResolvedValue({ items: [version], next_cursor: null })
+    mocked.listAgents.mockResolvedValue({ items: [{ ...agent, database_profile_id: null }], next_cursor: null })
     renderWith(<RunTestsDialog token="tok" initial={[item('C')]} onClose={vi.fn()} />)
-    await screen.findByRole('option', { name: /^(mock-agent|a)$/ })
+    await screen.findByRole('option', { name: /mock-agent/ })
     await userEvent.selectOptions(screen.getByLabelText('选择 Agent'), 'A1')
-    await screen.findByRole('option', { name: /v1/ })
-    await userEvent.selectOptions(screen.getByLabelText('选择 Agent 版本'), 'V1')
     expect(await screen.findByRole('alert')).toHaveTextContent('尚未配置数据库')
     expect(screen.getByRole('button', { name: /运行 1 个用例/ })).toBeDisabled()
   })

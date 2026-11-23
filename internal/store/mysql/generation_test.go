@@ -55,7 +55,7 @@ func TestCreateGenerationJobAtomicallyEnqueuesInitialWork(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectExec(regexp.QuoteMeta(upsertGenerationRequestSQL)).WithArgs(
 		generationRequestID, input.IdempotencyKey, []byte(input.Request), input.RequestSHA256, input.DescriptionTokens,
-		input.TargetAgentVersionID, input.GenerateDataset, input.DatabaseProfileID,
+		input.TargetAgentID, input.GenerateDataset, input.DatabaseProfileID,
 	).WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectQuery(regexp.QuoteMeta(lockGenerationRequestSQL)).WithArgs(input.IdempotencyKey).WillReturnRows(
 		sqlmock.NewRows([]string{"id", "request_sha256"}).AddRow(generationRequestID, input.RequestSHA256),
@@ -101,7 +101,7 @@ func TestCreateGenerationJobReturnsIdempotentReplay(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectExec(regexp.QuoteMeta(upsertGenerationRequestSQL)).WithArgs(
 		unusedRequestID, input.IdempotencyKey, []byte(input.Request), input.RequestSHA256, input.DescriptionTokens,
-		input.TargetAgentVersionID, input.GenerateDataset, input.DatabaseProfileID,
+		input.TargetAgentID, input.GenerateDataset, input.DatabaseProfileID,
 	).WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectQuery(regexp.QuoteMeta(lockGenerationRequestSQL)).WithArgs(input.IdempotencyKey).WillReturnRows(
 		sqlmock.NewRows([]string{"id", "request_sha256"}).AddRow(generationRequestID, input.RequestSHA256),

@@ -16,15 +16,15 @@ var ErrInvalidDays = errors.New("days must be from 1 to 90")
 
 // Overview is everything the dashboard shows. Dates are UTC calendar days and every day of the window is present.
 type Overview struct {
-	Days           int                `json:"days"`
-	Assets         []AssetCount       `json:"assets"`
-	Agents         AgentCount         `json:"agents"`
-	RunStatuses    []StatusCount      `json:"run_statuses"`
-	Jobs           []JobCount         `json:"generation_jobs"`
-	DailyRuns      []DailyRuns        `json:"daily_runs"`
-	DailyAssets    []DailyAssets      `json:"daily_assets"`
-	ScoreBuckets   []ScoreBucket      `json:"score_distribution"`
-	ByAgentVersion []AgentVersionStat `json:"by_agent_version"`
+	Days         int           `json:"days"`
+	Assets       []AssetCount  `json:"assets"`
+	Agents       AgentCount    `json:"agents"`
+	RunStatuses  []StatusCount `json:"run_statuses"`
+	Jobs         []JobCount    `json:"generation_jobs"`
+	DailyRuns    []DailyRuns   `json:"daily_runs"`
+	DailyAssets  []DailyAssets `json:"daily_assets"`
+	ScoreBuckets []ScoreBucket `json:"score_distribution"`
+	ByAgent      []AgentStat   `json:"by_agent"`
 }
 
 // AssetCount counts one kind of asset: logical resources, revisions, and the revisions that can still be used.
@@ -36,8 +36,7 @@ type AssetCount struct {
 }
 
 type AgentCount struct {
-	Agents   int `json:"agents"`
-	Versions int `json:"versions"`
+	Agents int `json:"agents"`
 }
 
 type StatusCount struct {
@@ -76,15 +75,14 @@ type ScoreBucket struct {
 	Count int `json:"count"`
 }
 
-type AgentVersionStat struct {
-	AgentName      string   `json:"agent_name"`
-	Version        string   `json:"version"`
-	AgentVersionID string   `json:"agent_version_id"`
-	Runs           int      `json:"runs"`
-	Evaluated      int      `json:"evaluated"`
-	Passed         int      `json:"passed"`
-	PassRate       *float64 `json:"pass_rate"`
-	AvgScore       *float64 `json:"avg_score"`
+type AgentStat struct {
+	AgentName string   `json:"agent_name"`
+	AgentID   string   `json:"agent_id"`
+	Runs      int      `json:"runs"`
+	Evaluated int      `json:"evaluated"`
+	Passed    int      `json:"passed"`
+	PassRate  *float64 `json:"pass_rate"`
+	AvgScore  *float64 `json:"avg_score"`
 }
 
 // Store reads the aggregates. The MySQL implementation lives in the storage layer.
@@ -96,7 +94,7 @@ type Store interface {
 	DailyRuns(ctx context.Context, since time.Time) (map[string]DailyRuns, error)
 	DailyAssets(ctx context.Context, since time.Time) (map[string]DailyAssets, error)
 	ScoreBuckets(ctx context.Context, since time.Time) (map[int]int, error)
-	ByAgentVersion(ctx context.Context, since time.Time) ([]AgentVersionStat, error)
+	ByAgent(ctx context.Context, since time.Time) ([]AgentStat, error)
 }
 
 type Service struct {
@@ -163,7 +161,7 @@ func (service *Service) Overview(ctx context.Context, days int) (Overview, error
 	for index := 0; index < 5; index++ {
 		out.ScoreBuckets = append(out.ScoreBuckets, ScoreBucket{From: index * 20, To: index*20 + 20, Count: buckets[index]})
 	}
-	if out.ByAgentVersion, err = service.store.ByAgentVersion(ctx, since); err != nil {
+	if out.ByAgent, err = service.store.ByAgent(ctx, since); err != nil {
 		return Overview{}, err
 	}
 	return out, nil

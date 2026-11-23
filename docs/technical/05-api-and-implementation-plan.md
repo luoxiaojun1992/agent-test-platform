@@ -68,7 +68,7 @@ GENERATION_CONTEXT_WINDOW         (until architecture 16.6)
 GENERATION_MAX_OUTPUT_TOKENS      (until architecture 16.6)
 ```
 
-Test-environment configuration (validation MySQL instances, Database Profiles, Agents, Agent Versions, LLM providers) and every credential are
+Test-environment configuration (validation MySQL instances, Database Profiles, Agents, Agents, LLM providers) and every credential are
 entered through the Web UI or the API and stored in Platform MySQL. They change without a restart. Credentials are
 never read from environment variables and never fall back to them.
 
@@ -79,7 +79,7 @@ Configuration validates all selected model capabilities and database separation 
 Validation MySQL registration rejects the platform endpoint (architecture 16.5).
 
 Secret namespaces are distinct: `API_BEARER_TOKEN` authenticates QA/Web clients to this platform;
-OpenAI/Ollama credentials authenticate Model Gateway egress; each Agent Version has its own
+OpenAI/Ollama credentials authenticate Model Gateway egress; each Agent has its own
 Agent token reference, and each Agent's database account is its own secret reference. The platform issues no Run-scoped tokens. No namespace may
 fall back to another.
 
@@ -162,7 +162,7 @@ are covered by the MySQL 8.4 integration tests.
   listed instance; publication writes all bindings in one transaction; a failing instance blocks publication.
 - Worker: validation MySQL connections come from the registry, cached by ID and admin secret version. The
   `TARGET_MYSQL_ADMIN_DSN` and `TARGET_MYSQL_CA_FILE` settings are removed.
-- Runs are separate from this registry: `POST /api/v1/test-runs` takes `{agent_version_id, test_case_revision_ids[], repetitions}` and writes the Dataset's initial SQL into the Agent's own database (migrations 0016-0018).
+- Runs are separate from this registry: `POST /api/v1/test-runs` takes `{agent_id, test_case_revision_ids[], repetitions}` and writes the Dataset's initial SQL into the Agent's own database (migrations 0016-0018).
 
 Exit: a Dataset Revision bound to two validation MySQL instances creates its execution schema on both and publishes both bindings; a
 failure on either blocks publication; registration rejects the Platform MySQL endpoint and an invalid CA PEM;
@@ -203,7 +203,7 @@ Exit: one description produces a complete immutable package or publishes nothing
 - Build and ship the React + TypeScript + Vite Web UI.
 - Implement the per-asset generation dialogs, Job progress, package review, run list and detail, run dialog, and result views with loading, empty,
   error, cancellation, and retry states.
-- Add Agent Version comparison over the Runs of selected Test Case Revisions (`GET /api/v1/benchmark`).
+- Add Agent comparison over the Runs of selected Test Case Revisions (`GET /api/v1/benchmark`).
 
 Exit: the MVP acceptance journey works without manual asset authoring.
 

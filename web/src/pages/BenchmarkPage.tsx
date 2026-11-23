@@ -17,10 +17,10 @@ export function BenchmarkPage({ token }: { token: string }) {
         <RevisionSelect token={token} kind="test-cases" label="测试用例" multiple onChange={setCases} />
       </Card>
       <Card flush>
-        <DataTable label="基准结果" rows={benchmark.data?.items ?? []} rowKey={(entry) => entry.agent_version_id} loading={benchmark.isPending && ids.length > 0}
+        <DataTable label="基准结果" rows={benchmark.data?.items ?? []} rowKey={(entry) => entry.agent_id} loading={benchmark.isPending && ids.length > 0}
           empty={ids.length > 0 ? '所选用例还没有已完成的运行' : '请先选择测试用例'}
           columns={[
-            { key: 'agent', title: 'Agent 版本', render: (entry) => <Mono>{entry.agent_version_id}</Mono> },
+            { key: 'agent', title: 'Agent', render: (entry) => <Mono>{entry.agent_id}</Mono> },
             { key: 'runs', title: '有效运行数', render: (entry) => entry.run_count },
             { key: 'rate', title: '通过率', render: (entry) => `${entry.pass_rate.toFixed(1)}%` },
             { key: 'score', title: '平均得分', render: (entry) => <Score value={entry.avg_score} /> },

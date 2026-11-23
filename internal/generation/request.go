@@ -59,20 +59,20 @@ type DifficultyRange struct {
 }
 
 type NormalizedRequest struct {
-	SchemaVersion        string           `json:"schema_version"`
-	Description          string           `json:"description"`
-	TargetAgentVersionID *string          `json:"target_agent_version_id"`
-	GenerateDataset      bool             `json:"generate_dataset"`
-	ValidationDBIDs      []string         `json:"validation_db_ids"`
-	DatabaseProfileID    *string          `json:"database_profile_id"`
-	Domain               *string          `json:"domain"`
-	AgentMode            string           `json:"agent_mode"`
-	Capabilities         *[]string        `json:"capabilities"`
-	Difficulty           *DifficultyRange `json:"difficulty"`
-	TestCaseCount        int              `json:"test_case_count"`
-	Coverage             *[]string        `json:"coverage"`
-	AutoActivate         bool             `json:"auto_activate"`
-	RequireManualReview  bool             `json:"require_manual_review"`
+	SchemaVersion       string           `json:"schema_version"`
+	Description         string           `json:"description"`
+	TargetAgentID       *string          `json:"target_agent_id"`
+	GenerateDataset     bool             `json:"generate_dataset"`
+	ValidationDBIDs     []string         `json:"validation_db_ids"`
+	DatabaseProfileID   *string          `json:"database_profile_id"`
+	Domain              *string          `json:"domain"`
+	AgentMode           string           `json:"agent_mode"`
+	Capabilities        *[]string        `json:"capabilities"`
+	Difficulty          *DifficultyRange `json:"difficulty"`
+	TestCaseCount       int              `json:"test_case_count"`
+	Coverage            *[]string        `json:"coverage"`
+	AutoActivate        bool             `json:"auto_activate"`
+	RequireManualReview bool             `json:"require_manual_review"`
 }
 
 type RequestSnapshot struct {
@@ -172,19 +172,19 @@ func (draft ArtifactDraft) Validate() error {
 }
 
 type generationRequestDocument struct {
-	Description          string           `json:"description"`
-	TargetAgentVersionID *string          `json:"target_agent_version_id"`
-	GenerateDataset      *bool            `json:"generate_dataset"`
-	ValidationDBIDs      []string         `json:"validation_db_ids"`
-	DatabaseProfileID    *string          `json:"database_profile_id"`
-	Domain               *string          `json:"domain"`
-	AgentMode            string           `json:"agent_mode"`
-	Capabilities         *[]string        `json:"capabilities"`
-	Difficulty           *DifficultyRange `json:"difficulty"`
-	TestCaseCount        int              `json:"test_case_count"`
-	Coverage             *[]string        `json:"coverage"`
-	AutoActivate         *bool            `json:"auto_activate"`
-	RequireManualReview  *bool            `json:"require_manual_review"`
+	Description         string           `json:"description"`
+	TargetAgentID       *string          `json:"target_agent_id"`
+	GenerateDataset     *bool            `json:"generate_dataset"`
+	ValidationDBIDs     []string         `json:"validation_db_ids"`
+	DatabaseProfileID   *string          `json:"database_profile_id"`
+	Domain              *string          `json:"domain"`
+	AgentMode           string           `json:"agent_mode"`
+	Capabilities        *[]string        `json:"capabilities"`
+	Difficulty          *DifficultyRange `json:"difficulty"`
+	TestCaseCount       int              `json:"test_case_count"`
+	Coverage            *[]string        `json:"coverage"`
+	AutoActivate        *bool            `json:"auto_activate"`
+	RequireManualReview *bool            `json:"require_manual_review"`
 
 	// Routing fields select the Job kind and its input Revisions; they are Job columns, not normalized request content.
 	JobKind                 string  `json:"job_kind"`
@@ -209,8 +209,8 @@ func NormalizeRequest(document json.RawMessage) (NormalizedRequest, error) {
 	if input.Domain != nil && strings.TrimSpace(*input.Domain) == "" {
 		return NormalizedRequest{}, fmt.Errorf("domain must contain non-whitespace text")
 	}
-	if input.TargetAgentVersionID != nil && !requestULIDPattern.MatchString(*input.TargetAgentVersionID) {
-		return NormalizedRequest{}, fmt.Errorf("target Agent Version ID is invalid")
+	if input.TargetAgentID != nil && !requestULIDPattern.MatchString(*input.TargetAgentID) {
+		return NormalizedRequest{}, fmt.Errorf("target Agent ID is invalid")
 	}
 	targetSeen := make(map[string]struct{}, len(input.ValidationDBIDs))
 	minimumTargets := 1
@@ -279,7 +279,7 @@ func NormalizeRequest(document json.RawMessage) (NormalizedRequest, error) {
 
 	return NormalizedRequest{
 		SchemaVersion: NormalizedRequestSchemaVersion,
-		Description:   input.Description, TargetAgentVersionID: cloneString(input.TargetAgentVersionID),
+		Description:   input.Description, TargetAgentID: cloneString(input.TargetAgentID),
 		GenerateDataset: generateDataset, DatabaseProfileID: cloneString(input.DatabaseProfileID),
 		ValidationDBIDs: append([]string{}, input.ValidationDBIDs...),
 		Domain:          cloneString(input.Domain), AgentMode: agentMode,

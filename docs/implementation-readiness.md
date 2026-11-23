@@ -70,9 +70,9 @@ Each slice starts only after the previous slice exit criteria in
 
 - Platform process configuration comes from environment variables: `HTTP_ADDR`, `PLATFORM_MYSQL_DSN` (including the
   database password), and the encryption keys (architecture 16.4).
-- Test-environment configuration (Targets, Database Profiles, Agent Versions, LLM providers) and every credential are
+- Test-environment configuration (Targets, Database Profiles, Agents, LLM providers) and every credential are
   entered through the UI and stored in Platform MySQL.
-- A Dataset Revision may bind to several Targets. A Run requires its Test Case, Scenario, Dataset, and Agent Version,
+- A Dataset Revision may bind to several Targets. A Run requires its Test Case, Scenario, Dataset, and Agent,
   and a Dataset Revision bound to the Run's Target (architecture 16.5).
 - Still environment variables until their UI work lands (architecture 16.4 and 16.6): `API_BEARER_TOKEN`,
   `GENERATOR_CONFIG_SHA256`, and `GENERATION_MODEL_*`. `TARGET_MYSQL_ADMIN_DSN` and `TARGET_MYSQL_CA_FILE` were removed

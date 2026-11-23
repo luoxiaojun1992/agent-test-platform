@@ -45,7 +45,7 @@ func (store *AnalyticsStore) AssetCounts(ctx context.Context) ([]analytics.Asset
 
 func (store *AnalyticsStore) AgentCounts(ctx context.Context) (analytics.AgentCount, error) {
 	var out analytics.AgentCount
-	if err := store.database.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM agent), (SELECT COUNT(*) FROM agent_version)`).Scan(&out.Agents, &out.Versions); err != nil {
+	if err := store.database.QueryRowContext(ctx, `SELECT COUNT(*) FROM agent`).Scan(&out.Agents); err != nil {
 		return out, fmt.Errorf("count agents: %w", err)
 	}
 	return out, nil
@@ -163,21 +163,21 @@ func (store *AnalyticsStore) ScoreBuckets(ctx context.Context, since time.Time) 
 	return out, rows.Err()
 }
 
-func (store *AnalyticsStore) ByAgentVersion(ctx context.Context, since time.Time) ([]analytics.AgentVersionStat, error) {
-	rows, err := store.database.QueryContext(ctx, `SELECT a.name, v.version, v.id, COUNT(r.id), COUNT(e.id), COALESCE(SUM(e.pass), 0), AVG(e.final_score)
-FROM test_run r JOIN agent_version v ON v.id = r.agent_version_id JOIN agent a ON a.id = v.agent_id
+func (store *AnalyticsStore) ByAgent(ctx context.Context, since time.Time) ([]analytics.AgentStat, error) {
+	rows, err := store.database.QueryContext(ctx, `SELECT a.name, a.id, COUNT(r.id), COUNT(e.id), COALESCE(SUM(e.pass), 0), AVG(e.final_score)
+FROM test_run r JOIN agent a ON a.id = r.agent_id
 LEFT JOIN evaluation_attempt e ON e.test_run_id = r.id AND e.status = 'COMPLETED'
 	AND e.attempt_no = (SELECT MAX(x.attempt_no) FROM evaluation_attempt x WHERE x.test_run_id = r.id AND x.status = 'COMPLETED')
-WHERE r.created_at >= ? GROUP BY v.id, a.name, v.version ORDER BY COUNT(r.id) DESC, a.name, v.version LIMIT 12`, since)
+WHERE r.created_at >= ? GROUP BY a.id, a.name ORDER BY COUNT(r.id) DESC, a.name LIMIT 12`, since)
 	if err != nil {
-		return nil, fmt.Errorf("aggregate by agent version: %w", err)
+		return nil, fmt.Errorf("aggregate by agent: %w", err)
 	}
 	defer rows.Close()
-	out := []analytics.AgentVersionStat{}
+	out := []analytics.AgentStat{}
 	for rows.Next() {
-		var item analytics.AgentVersionStat
+		var item analytics.AgentStat
 		var avg sql.NullFloat64
-		if err := rows.Scan(&item.AgentName, &item.Version, &item.AgentVersionID, &item.Runs, &item.Evaluated, &item.Passed, &avg); err != nil {
+		if err := rows.Scan(&item.AgentName, &item.AgentID, &item.Runs, &item.Evaluated, &item.Passed, &avg); err != nil {
 			return nil, err
 		}
 		if item.Evaluated > 0 {

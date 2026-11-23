@@ -227,10 +227,10 @@ func (store *RunStore) Reevaluate(ctx context.Context, sourceID, newID, requestK
 	}
 	rowSum := sha256.Sum256([]byte(requestKey + "/" + newID))
 	if _, err := tx.ExecContext(ctx, `INSERT INTO test_run (id, idempotency_key, request_key, request_sha256, test_case_revision_id, dataset_revision_id,
-			agent_version_id, repetition_no, status, execution_outcome, input_text, final_output, precondition_json, postcondition_json, state_diff_json,
+			agent_id, repetition_no, status, execution_outcome, input_text, final_output, precondition_json, postcondition_json, state_diff_json,
 			deterministic_json, deterministic_score, actual_output_sha256, started_at, agent_finished_at, environment_cleaned_at)
-		SELECT ?, ?, ?, ?, test_case_revision_id, dataset_revision_id, agent_version_id,
-			(SELECT COALESCE(MAX(x.repetition_no), 0) + 1 FROM test_run x WHERE x.agent_version_id = s.agent_version_id AND x.test_case_revision_id = s.test_case_revision_id),
+		SELECT ?, ?, ?, ?, test_case_revision_id, dataset_revision_id, agent_id,
+			(SELECT COALESCE(MAX(x.repetition_no), 0) + 1 FROM test_run x WHERE x.agent_id = s.agent_id AND x.test_case_revision_id = s.test_case_revision_id),
 			'EVALUATING', execution_outcome, input_text, final_output, precondition_json, postcondition_json, state_diff_json,
 			deterministic_json, deterministic_score, actual_output_sha256, started_at, agent_finished_at, environment_cleaned_at
 		FROM test_run s WHERE s.id = ?`, newID, hex.EncodeToString(rowSum[:]), requestKey, requestSHA256, sourceID); err != nil {

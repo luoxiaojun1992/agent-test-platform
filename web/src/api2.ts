@@ -1,17 +1,18 @@
 import { request } from './api'
 
-export interface Agent { id: string; name: string; description?: string; database_profile_id: string | null; created_at: string }
-export interface ToolDefinition { name: string; description: string; input_schema: unknown }
-export interface AgentVersion {
-  id: string; agent_id: string; version: string; chat_endpoint: string; target_model: string; contract_version: string
+export interface Agent {
+  id: string; name: string; description?: string; database_profile_id: string | null
+  chat_endpoint: string; target_model: string; contract_version: string
   tool_evaluation_mode: 'DETERMINISTIC_CHAIN' | 'SESSION_LLM_ONLY'; tool_catalog: ToolDefinition[] | null; created_at: string
 }
-export interface AgentVersionInput {
-  version: string; chat_endpoint: string; target_bearer_token_ref: string; target_model: string; contract_version: '1.0'
+export interface ToolDefinition { name: string; description: string; input_schema: unknown }
+export interface AgentInput {
+  name: string; description?: string; database_profile_id?: string | null
+  chat_endpoint: string; target_bearer_token_ref: string; target_model: string; contract_version: '1.0'
   tool_evaluation_mode: 'DETERMINISTIC_CHAIN' | 'SESSION_LLM_ONLY'; tool_catalog: ToolDefinition[] | null
 }
 export interface TestRun {
-  id: string; status: string; execution_outcome?: string; test_case_revision_id: string; dataset_revision_id: string; agent_version_id: string
+  id: string; status: string; execution_outcome?: string; test_case_revision_id: string; dataset_revision_id: string; agent_id: string
   final_output: string | null; precondition_results: unknown; postcondition_results: unknown; state_diff: unknown; deterministic_details: unknown
   error: unknown; deterministic_score: number | null; final_score: number | null; pass: boolean | null; created_at: string
 }
@@ -21,7 +22,7 @@ export interface ToolCall {
 export interface EvaluationAttempt {
   id: string; test_run_id: string; attempt_no: number; status: string; judge_model_alias: string; llm_score: number | null; final_score: number | null; pass: boolean | null; created_at: string
 }
-export interface BenchmarkEntry { agent_version_id: string; run_count: number; pass_rate: number; avg_score: number; critical_failures: number }
+export interface BenchmarkEntry { agent_id: string; run_count: number; pass_rate: number; avg_score: number; critical_failures: number }
 export interface ModelEntry { alias: string; role: 'generation' | 'judge'; provider: string; model: string; active: boolean; created_at: string }
 export interface CatalogItem { id: string; created_at: string }
 export type AssetKind = 'scenarios' | 'datasets' | 'test-cases'
@@ -45,9 +46,7 @@ const query = (params: Record<string, string | undefined>) => {
 }
 
 export const listAgents = (token: string, cursor: string) => request<PageOf<Agent>>(`/api/v1/agents${query({ limit: '50', cursor })}`, token)
-export const createAgent = (token: string, body: { name: string; description?: string; database_profile_id?: string | null }) => post<Agent>(token, '/api/v1/agents', body, 'agent')
-export const listAgentVersions = (token: string, agentId: string, cursor: string) => request<PageOf<AgentVersion>>(`/api/v1/agents/${agentId}/versions${query({ limit: '50', cursor })}`, token)
-export const createAgentVersion = (token: string, agentId: string, body: AgentVersionInput) => post<AgentVersion>(token, `/api/v1/agents/${agentId}/versions`, body, 'version')
+export const createAgent = (token: string, body: AgentInput) => post<Agent>(token, '/api/v1/agents', body, 'agent')
 export const discoverTools = (token: string, body: { chat_endpoint: string; target_bearer_token_ref: string }) =>
   request<{ tools: ToolDefinition[] }>('/api/v1/agent-tool-discovery', token, { method: 'POST', body: JSON.stringify(body) })
 
@@ -63,9 +62,9 @@ export interface AgentDatabaseInput { name: string; host: string; port: number; 
 export const createAgentDatabase = (token: string, body: AgentDatabaseInput) =>
   post<{ id: string }>(token, '/api/v1/database-profiles', { ...body, engine: 'MYSQL', snapshot_mode: 'SCHEMA_ONLY', snapshot_timeout_seconds: 30 }, 'agentdb')
 
-export const createRuns = (token: string, body: { agent_version_id: string; test_case_revision_ids: string[]; repetitions: number }) =>
+export const createRuns = (token: string, body: { agent_id: string; test_case_revision_ids: string[]; repetitions: number }) =>
   post<{ run_ids: string[] }>(token, '/api/v1/test-runs', body, 'runs')
-export const listRuns = (token: string, cursor: string, filter: { status?: string; agent_version_id?: string; test_case_revision_id?: string }) =>
+export const listRuns = (token: string, cursor: string, filter: { status?: string; agent_id?: string; test_case_revision_id?: string }) =>
   request<PageOf<TestRun>>(`/api/v1/test-runs${query({ limit: '50', cursor, ...filter })}`, token)
 export const getRun = (token: string, id: string) => request<TestRun>(`/api/v1/test-runs/${id}`, token)
 export const listToolCalls = (token: string, id: string) => request<{ items: ToolCall[] }>(`/api/v1/test-runs/${id}/tool-calls`, token)
@@ -82,13 +81,13 @@ export interface DailyRuns { date: string; total: number; evaluated: number; pas
 export interface AnalyticsOverview {
   days: number
   assets: { kind: 'scenarios' | 'datasets' | 'test_cases'; resources: number; revisions: number; usable_revisions: number }[]
-  agents: { agents: number; versions: number }
+  agents: { agents: number }
   run_statuses: { status: string; count: number }[]
   generation_jobs: { kind: string; status: string; count: number }[]
   daily_runs: DailyRuns[]
   daily_assets: { date: string; scenarios: number; datasets: number; test_cases: number }[]
   score_distribution: { from: number; to: number; count: number }[]
-  by_agent_version: { agent_name: string; version: string; agent_version_id: string; runs: number; evaluated: number; passed: number; pass_rate: number | null; avg_score: number | null }[]
+  by_agent: { agent_name: string; agent_id: string; runs: number; evaluated: number; passed: number; pass_rate: number | null; avg_score: number | null }[]
 }
 export const getAnalytics = (token: string, days: number) => request<AnalyticsOverview>(`/api/v1/analytics/overview?days=${days}`, token)
 

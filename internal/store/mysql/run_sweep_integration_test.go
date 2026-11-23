@@ -56,7 +56,8 @@ func TestAgentDatabaseCheckAndSweepOnMySQL84(t *testing.T) {
 		VALUES ('01HZZZZZZZZZZZZZZZZZZZZZP1', 'agent-db', 'MYSQL', ?, ?, 'agent_db', ?, 'pw', 'DISABLED_LOCAL_ONLY', 'SCHEMA_ONLY', JSON_OBJECT(), REPEAT('f', 64), 'k1')`, host, port, adminConfig.User); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := platform.ExecContext(ctx, `INSERT INTO agent (id, name, database_profile_id, config_sha256, idempotency_key) VALUES ('AG', 'a', '01HZZZZZZZZZZZZZZZZZZZZZP1', REPEAT('e', 64), 'ak')`); err != nil {
+	if _, err := platform.ExecContext(ctx, `INSERT INTO agent (id, name, database_profile_id, chat_endpoint, target_bearer_token_ref, target_model, contract_version, tool_evaluation_mode, config_json, config_sha256, idempotency_key)
+		VALUES ('AG', 'a', '01HZZZZZZZZZZZZZZZZZZZZZP1', 'http://x', 'tok', 'm', '1.0', 'SESSION_LLM_ONLY', JSON_OBJECT(), REPEAT('e', 64), 'ak')`); err != nil {
 		t.Fatal(err)
 	}
 	store, err := mysqlstore.NewRunStore(platform)
@@ -96,7 +97,7 @@ func TestAgentDatabaseCheckAndSweepOnMySQL84(t *testing.T) {
 
 	finished, active, unknown := "01HZZZZZZZZZZZZZZZZZZZZZR1", "01HZZZZZZZZZZZZZZZZZZZZZR2", "01HZZZZZZZZZZZZZZZZZZZZZR3"
 	for _, row := range [][2]string{{finished, "COMPLETED"}, {active, "RUNNING"}} {
-		if _, err := platform.ExecContext(ctx, `INSERT INTO test_run (id, idempotency_key, test_case_revision_id, dataset_revision_id, agent_version_id, status, input_text) VALUES (?, ?, 'T', 'D', 'V', ?, 'x')`, row[0], "key-"+row[0], row[1]); err != nil {
+		if _, err := platform.ExecContext(ctx, `INSERT INTO test_run (id, idempotency_key, test_case_revision_id, dataset_revision_id, agent_id, status, input_text) VALUES (?, ?, 'T', 'D', 'AG', ?, 'x')`, row[0], "key-"+row[0], row[1]); err != nil {
 			t.Fatal(err)
 		}
 	}
