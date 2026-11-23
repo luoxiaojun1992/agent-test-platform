@@ -212,7 +212,7 @@ test('admin console: configure, run, evaluate, re-evaluate and benchmark with mo
   // The dashboard analyses the results: one finished Run plus its re-evaluation, and the three generated asset kinds.
   await expect(page.locator('.stat', { hasText: '时间内运行数' })).toContainText('2')
   await expect(page.locator('.stat', { hasText: '测试用例（可用/全部版本）' })).toContainText('3 / 3')
-  for (const chart of ['每日运行数与通过数', '每日通过率', '每日平均得分', '最终得分分布', '运行状态占比', '各 Agent 版本通过率', '测试资产版本数', '每日新增测试资产']) {
+  for (const chart of ['每日运行数与通过数', '每日通过率', '每日平均得分', '最终得分分布', '运行状态占比', '各 Agent 通过率', '测试资产版本数', '每日新增测试资产']) {
     await expect(page.getByRole('img', { name: chart }).or(page.getByRole('list', { name: chart }))).toBeVisible()
   }
   await expect(page.getByRole('list', { name: '测试资产版本数' })).toContainText('测试用例')
