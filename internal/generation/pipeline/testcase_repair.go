@@ -239,16 +239,9 @@ func (processor *Processor) repairTestCases(ctx context.Context, stage generatio
 		return generation.StageResult{}, err
 	}
 
-	precondition, err := processor.openPrimaryDataset(ctx, testCaseCtx.targetMySQLIDs[0], testCaseCtx.database)
-	if err != nil {
-		return generation.StageResult{}, fmt.Errorf("open Dataset read connection: %w", err)
-	}
-	defer precondition.Close()
-
 	scope := generation.Scope{
 		JobID: stage.JobID, ScenarioRevisionID: testCaseCtx.scenarioID, DatasetRevisionID: testCaseCtx.datasetRevisionID,
-		ToolEvaluationMode: generation.ToolEvaluationSessionLLM, Tables: testCaseCtx.tables,
-		PreconditionDB: precondition, ExistingPrompts: existingPrompts, ExistingOracles: existingOracles,
+		ExistingPrompts: existingPrompts, ExistingOracles: existingOracles,
 	}
 	repairCount := len(rejected)
 	executor := &testCaseExecutor{validator: processor.testCaseValidator, store: processor.store, stage: stage, scope: scope, requested: repairCount}

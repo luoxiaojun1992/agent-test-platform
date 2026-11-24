@@ -5,7 +5,6 @@
   "generate_dataset": true,
   "database_profile_id": null,
   "domain": null,
-  "agent_mode": "TASK",
   "capabilities": null,
   "difficulty": null,
   "test_case_count": 10,

@@ -97,7 +97,6 @@ type testCaseContext struct {
 	targetMySQLIDs    []string
 	scenarioSummary   string
 	tablesSummary     string
-	tables            map[string]generation.TableCatalog
 }
 
 func (processor *Processor) loadTestCaseContext(ctx context.Context, stage generation.StageRequest) (testCaseContext, *generation.JobFailure, error) {
@@ -157,25 +156,21 @@ func (processor *Processor) loadTestCaseContext(ctx context.Context, stage gener
 	if len(dataset.ValidationDBIDs) == 0 {
 		return testCaseContext{}, jobFailure("VALIDATION_DB_NOT_BOUND", "The Dataset Revision is not bound to a validation MySQL.", false, nil), nil
 	}
-	tables := make(map[string]generation.TableCatalog, len(metadata.Tables))
 	var summary strings.Builder
 	for _, table := range metadata.Tables {
-		columns := make(map[string]struct{}, len(table.Columns))
 		summary.WriteString(table.Name + "(")
 		for index, column := range table.Columns {
 			if index > 0 {
 				summary.WriteString(", ")
 			}
 			summary.WriteString(column.Name)
-			columns[strings.ToLower(column.Name)] = struct{}{}
 		}
 		summary.WriteString(")\n")
-		tables[strings.ToLower(table.Name)] = generation.TableCatalog{Columns: columns}
 	}
 
 	return testCaseContext{
 		normalized: normalized, scenarioID: scenarioID, datasetRevisionID: dataset.DatasetRevisionID,
-		database: dataset.Database, scenarioSummary: string(scenarioContent), tables: tables,
+		database: dataset.Database, scenarioSummary: string(scenarioContent),
 		targetMySQLIDs: dataset.ValidationDBIDs,
 		tablesSummary:  summary.String(),
 	}, nil, nil
@@ -265,16 +260,9 @@ func (processor *Processor) generateTestCases(ctx context.Context, stage generat
 		return generation.StageResult{Failure: contextFailure}, nil
 	}
 
-	precondition, err := processor.openPrimaryDataset(ctx, testCaseCtx.targetMySQLIDs[0], testCaseCtx.database)
-	if err != nil {
-		return generation.StageResult{}, fmt.Errorf("open Dataset read connection: %w", err)
-	}
-	defer precondition.Close()
-
 	scope := generation.Scope{
 		JobID: stage.JobID, ScenarioRevisionID: testCaseCtx.scenarioID, DatasetRevisionID: testCaseCtx.datasetRevisionID,
-		ToolEvaluationMode: generation.ToolEvaluationSessionLLM, Tables: testCaseCtx.tables,
-		PreconditionDB: precondition, ExistingPrompts: map[string]struct{}{}, ExistingOracles: map[string]struct{}{},
+		ExistingPrompts: map[string]struct{}{}, ExistingOracles: map[string]struct{}{},
 	}
 	requested := testCaseCtx.normalized.TestCaseCount
 	executor := &testCaseExecutor{validator: processor.testCaseValidator, store: processor.store, stage: stage, scope: scope, requested: requested}
@@ -405,16 +393,10 @@ func buildTestCaseSystemPrompt(testCaseCtx testCaseContext) string {
 	return "You generate Test Cases for an Agent test package by calling create_test_case exactly once per " +
 		"candidate. Return only schema-conformant Tool calls; do not include hidden reasoning or chain-of-thought. " +
 		"Every call must use schema_version \"1.0\", job_id, scenario_revision_id, and dataset_revision_id exactly " +
-		"as given below, tool_evaluation_mode \"SESSION_LLM_ONLY\", and expected_tool_call_chain null (no Tool " +
-		"Catalog is configured for this Agent). Use a unique lowercase-hyphenated client_case_id per candidate. " +
-		"agent_mode must be \"" + testCaseCtx.normalized.AgentMode + "\"; when it is TASK, include at least one " +
-		"critical postcondition and at least one allowed_state_changes rule. preconditions and postconditions are " +
-		"each one read-only SELECT statement per assertion, matched against the canonical result format " +
-		"{\"columns\":[{\"name\":...,\"type\":...}],\"rows\":[[{\"type\":...,\"value\":...}]],\"ordered\":bool," +
-		"\"truncated\":false}; a query that can return more than one row needs a deterministic ORDER BY. Only " +
-		"reference the tables and columns listed below. Never use RAND(), UUID(), NOW(), or other nondeterministic " +
-		"functions, and never write SQL comments. evaluation_criteria weights must sum to 1. Mark inferred " +
-		"assumptions in generation_assumptions."
+		"as given below. Use a unique lowercase-hyphenated client_case_id per candidate. Write a prompt that " +
+		"naturally exercises the Scenario, an expected_output describing the correct result, and evaluation_criteria " +
+		"(weights summing to 1) that judge the Agent's answer and Tool usage from its output and Tool calls. " +
+		"Mark inferred assumptions in generation_assumptions."
 }
 
 func buildTestCaseUserPrompt(stage generation.StageRequest, testCaseCtx testCaseContext, requested int) string {

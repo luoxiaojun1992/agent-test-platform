@@ -59,11 +59,10 @@ func TestMockTargetEndToEnd(t *testing.T) {
 	if err != nil || len(catalog) != 2 || catalog[1].Name != "mysql.execute" {
 		t.Fatalf("catalog=%#v error=%v", catalog, err)
 	}
-	tools := []agent.TargetTool{{Name: "mysql.query", Description: "Query MySQL.", InputSchema: json.RawMessage(`{"type":"object"}`)}}
 	result, err := client.Chat(context.Background(), agent.ChatRequest{
-		SchemaVersion: "1.0", RunID: mockRunID, Model: "mock-agent-v1", Mode: "TASK",
-		Message:  agent.ChatMessage{ID: "msg-" + mockRunID, Role: "user", Content: "Cancel order O10001."},
-		Deadline: time.Now().Add(time.Minute), Tools: &tools,
+		SchemaVersion: "1.0", RunID: mockRunID, Model: "mock-agent-v1",
+		Message:              agent.ChatMessage{ID: "msg-" + mockRunID, Role: "user", Content: "Cancel order O10001."},
+		Deadline:             time.Now().Add(time.Minute),
 		KnowledgeDocumentIDs: []string{accepted.DocumentID},
 	}, nil)
 	if err != nil {
@@ -80,9 +79,9 @@ func TestMockTargetRejectsWrongModelAndUnreadyKnowledge(t *testing.T) {
 	validator, _ := contracts.NewValidator()
 	handler, _ := NewServer(Config{BearerToken: "target-secret", ModelID: "mock-agent-v1", IndexDelay: time.Second}, validator)
 	requestBody := map[string]any{
-		"schema_version": "1.0", "run_id": mockRunID, "model": "unknown", "mode": "ANSWER",
-		"message":  map[string]any{"id": "msg-1", "role": "user", "content": "Hello"},
-		"deadline": time.Now().Add(time.Minute), "tools": nil,
+		"schema_version": "1.0", "run_id": mockRunID, "model": "unknown",
+		"message":                map[string]any{"id": "msg-1", "role": "user", "content": "Hello"},
+		"deadline":               time.Now().Add(time.Minute),
 		"knowledge_document_ids": []string{},
 	}
 	encoded, _ := json.Marshal(requestBody)

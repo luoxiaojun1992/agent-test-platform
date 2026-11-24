@@ -3,7 +3,6 @@ package pipeline
 import (
 	"context"
 	"encoding/json"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -137,8 +136,6 @@ func candidateFixture(t *testing.T, clientCaseID string) []byte {
 	document["client_case_id"] = clientCaseID
 	document["scenario_revision_id"] = testCaseScenarioID
 	document["dataset_revision_id"] = testCaseDatasetRevID
-	document["tool_evaluation_mode"] = generation.ToolEvaluationSessionLLM
-	document["expected_tool_call_chain"] = nil
 	encoded, err := json.Marshal(document)
 	if err != nil {
 		t.Fatal(err)
@@ -150,7 +147,7 @@ func newTestCaseHarness(t *testing.T, requestedCount int) (*fakeTestCaseStore, *
 	t.Helper()
 	store := newFakeTestCaseStore()
 
-	request := []byte(`{"schema_version":"1.1","validation_db_ids":["0b6d6f3e-2c4a-4f8e-9a1b-7c5d3e2f1a90"],"description":"Generate order cancellation tests.","target_agent_id":null,"generate_dataset":true,"database_profile_id":null,"domain":"e-commerce","agent_mode":"TASK","capabilities":["MYSQL_QUERY","MYSQL_EXECUTE"],"difficulty":{"min":"MEDIUM","max":"HARD"},"test_case_count":` + itoa(requestedCount) + `,"coverage":["NORMAL"],"auto_activate":true}`)
+	request := []byte(`{"schema_version":"1.1","validation_db_ids":["0b6d6f3e-2c4a-4f8e-9a1b-7c5d3e2f1a90"],"description":"Generate order cancellation tests.","target_agent_id":null,"generate_dataset":true,"database_profile_id":null,"domain":"e-commerce","capabilities":["MYSQL_QUERY","MYSQL_EXECUTE"],"difficulty":{"min":"MEDIUM","max":"HARD"},"test_case_count":` + itoa(requestedCount) + `,"coverage":["NORMAL"],"auto_activate":true}`)
 	canonicalRequest, requestDigest, err := generation.CanonicalJSON(request)
 	if err != nil {
 		t.Fatal(err)
@@ -223,7 +220,6 @@ func TestGenerateTestCasesAcceptsValidCandidate(t *testing.T) {
 	t.Parallel()
 
 	store, target, mock := newTestCaseHarness(t, 1)
-	mock.ExpectQuery(regexp.QuoteMeta("select `status` from orders where id = 'O10001'")).WillReturnRows(sqlmock.NewRows([]string{"status"}).AddRow("PAID"))
 
 	gateway := &fakeTestCaseGateway{responses: []llm.CompletionResponse{toolCallResponse("call-1", candidateFixture(t, "cancel-paid-order"))}}
 	processor := newTestCaseProcessor(t, store, gateway, target)

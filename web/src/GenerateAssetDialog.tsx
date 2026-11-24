@@ -26,7 +26,6 @@ export function GenerateAssetDialog({ token, kind, onClose }: Props) {
   const [dataset, setDataset] = useState<RevisionItem | null>(null)
   const [validationDbIds, setValidationDbIds] = useState<string[]>([])
   const [domain, setDomain] = useState('')
-  const [agentMode, setAgentMode] = useState<'ANSWER' | 'TASK'>('TASK')
   const [count, setCount] = useState(5)
   const [coverage, setCoverage] = useState<string[]>([])
   const [difficulty, setDifficulty] = useState('')
@@ -39,7 +38,7 @@ export function GenerateAssetDialog({ token, kind, onClose }: Props) {
 
   const create = useMutation({
     mutationFn: () => {
-      const body: Record<string, unknown> = { description, job_kind: jobKind[kind], require_manual_review: manualReview, agent_mode: agentMode }
+      const body: Record<string, unknown> = { description, job_kind: jobKind[kind], require_manual_review: manualReview }
       if (domain.trim()) body.domain = domain.trim()
       if (needsScenario && scenario) body.input_scenario_revision_id = scenario.id
       if (needsDataset && dataset) body.input_dataset_revision_id = dataset.id
@@ -91,11 +90,6 @@ export function GenerateAssetDialog({ token, kind, onClose }: Props) {
         {kind === 'scenarios' && <Field label="业务领域（可选）"><input value={domain} onChange={(event) => setDomain(event.target.value)} maxLength={128} aria-label="业务领域" /></Field>}
         {kind === 'test-cases' && (
           <>
-            <Field label="Agent 模式">
-              <select value={agentMode} onChange={(event) => setAgentMode(event.target.value as 'ANSWER' | 'TASK')} aria-label="Agent 模式">
-                <option value="TASK">TASK（会修改数据）</option><option value="ANSWER">ANSWER（只回答问题）</option>
-              </select>
-            </Field>
             <Field label="用例数量（1–20）"><input type="number" min={1} max={20} value={count} onChange={(event) => setCount(Math.min(20, Math.max(1, Number(event.target.value) || 1)))} aria-label="用例数量" /></Field>
             <Field label="难度（可选）">
               <select value={difficulty} onChange={(event) => setDifficulty(event.target.value)} aria-label="难度">

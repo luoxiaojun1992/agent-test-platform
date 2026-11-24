@@ -18,12 +18,6 @@ type DatasetIdentifiers struct {
 	Database string
 }
 
-// RunIdentifiers names one Test Run's database. Every Run has its own database, so Runs never share
-// data, including repeated Runs of the same Test Case.
-type RunIdentifiers struct {
-	Database string
-}
-
 // DeriveDatasetIdentifiers creates the deterministic database name from a canonical Dataset Revision
 // ULID. Application code must call this only with an ID it generated, never with a test case name,
 // prompt text, or other model output.
@@ -35,19 +29,6 @@ func DeriveDatasetIdentifiers(datasetRevisionID string) (DatasetIdentifiers, err
 	identifiers := DatasetIdentifiers{Database: "dataset_" + compact}
 	if err := requireValidIdentifiers(map[string]string{"database": identifiers.Database}); err != nil {
 		return DatasetIdentifiers{}, err
-	}
-	return identifiers, nil
-}
-
-// DeriveRunIdentifiers creates the database name of one Test Run from its canonical Run ULID.
-func DeriveRunIdentifiers(runID string) (RunIdentifiers, error) {
-	compact, err := compactULID(runID)
-	if err != nil {
-		return RunIdentifiers{}, err
-	}
-	identifiers := RunIdentifiers{Database: "run_" + compact}
-	if err := requireValidIdentifiers(map[string]string{"run database": identifiers.Database}); err != nil {
-		return RunIdentifiers{}, err
 	}
 	return identifiers, nil
 }

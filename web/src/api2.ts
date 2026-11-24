@@ -3,20 +3,20 @@ import { request } from './api'
 export interface Agent {
   id: string; name: string; description?: string; database_profile_id: string | null
   chat_endpoint: string; target_model: string; contract_version: string
-  tool_evaluation_mode: 'DETERMINISTIC_CHAIN' | 'SESSION_LLM_ONLY'; tool_catalog: ToolDefinition[] | null
+  tool_catalog: ToolDefinition[] | null
   client_id?: string; token_url?: string; created_at: string
 }
 export interface ToolDefinition { name: string; description: string; input_schema: unknown }
 export interface AgentInput {
   name: string; description?: string; database_profile_id?: string | null
   chat_endpoint: string; target_bearer_token_ref: string; target_model: string; contract_version: '1.0'
-  tool_evaluation_mode: 'DETERMINISTIC_CHAIN' | 'SESSION_LLM_ONLY'; tool_catalog: ToolDefinition[] | null
+  tool_catalog: ToolDefinition[] | null
   client_id?: string; client_secret_ref?: string; token_url?: string
 }
 export interface TestRun {
-  id: string; status: string; execution_outcome?: string; test_case_revision_id: string; dataset_revision_id: string; agent_id: string
-  final_output: string | null; precondition_results: unknown; postcondition_results: unknown; state_diff: unknown; deterministic_details: unknown
-  error: unknown; deterministic_score: number | null; final_score: number | null; pass: boolean | null; created_at: string
+  id: string; status: string; execution_outcome?: string; test_case_revision_id: string; dataset_revision_id: string; agent_id: string; session_id: string
+  final_output: string | null
+  error: unknown; final_score: number | null; pass: boolean | null; created_at: string
 }
 export interface ToolCall {
   sequence: number; call_id: string; tool_name: string; arguments: unknown; result: unknown; error: unknown; status: string; duration_ms: number; trace_source: string
@@ -24,7 +24,7 @@ export interface ToolCall {
 export interface EvaluationAttempt {
   id: string; test_run_id: string; attempt_no: number; status: string; judge_model_alias: string; llm_score: number | null; final_score: number | null; pass: boolean | null; created_at: string
 }
-export interface BenchmarkEntry { agent_id: string; run_count: number; pass_rate: number; avg_score: number; critical_failures: number }
+export interface BenchmarkEntry { agent_id: string; run_count: number; pass_rate: number; avg_score: number }
 export interface ModelEntry { alias: string; role: 'generation' | 'judge'; provider: string; model: string; active: boolean; created_at: string }
 export interface CatalogItem { id: string; created_at: string }
 export type AssetKind = 'scenarios' | 'datasets' | 'test-cases'

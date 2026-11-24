@@ -8,78 +8,35 @@
   },
   "actual_output": "Order O10001 has been cancelled.",
   "generation_assumptions": [],
-  "deterministic_results": [
-    {
-      "id": "order-is-cancelled",
-      "category": "STATE",
-      "critical": true,
-      "weight": 1.0,
-      "pass": true,
-      "expected": "CANCELLED",
-      "actual": "CANCELLED",
-      "reason": "The postcondition matched."
-    }
-  ],
-  "tool_evaluation_mode": "DETERMINISTIC_CHAIN",
-  "expected_tool_call_chain": {
-    "match_mode": "ORDERED_SUBSEQUENCE",
-    "allow_extra_read_calls": true,
-    "max_actual_calls": 6,
-    "steps": [
-      {
-        "id": "cancel-order",
-        "tool_name": "mysql.execute",
-        "required": true,
-        "critical": true,
-        "intent": "Set only O10001 to CANCELLED.",
-        "sql_match": {
-          "operation": "UPDATE",
-          "required_tables": ["orders"],
-          "required_predicates": [{"column": "id", "operator": "=", "value": "O10001"}],
-          "required_assignments": [{"column": "status", "value": "CANCELLED"}]
-        },
-        "result_match": {
-          "status": "SUCCESS",
-          "affected_rows": {"min": 1, "max": 1}
-        }
-      }
-    ],
-    "forbidden": []
-  },
-  "actual_tool_calls": [
+  "session_context": [
     {
       "sequence": 1,
-      "call_id": "call-002",
-      "tool_name": "mysql.execute",
-      "arguments": {"sql": "UPDATE orders SET status = 'CANCELLED' WHERE id = 'O10001'"},
-      "status": "SUCCESS",
-      "result_summary": {"affected_rows": 1},
-      "trace_source": "AGENT_REPORTED"
-    }
-  ],
-  "tool_chain_match": {
-    "pass": true,
-    "critical_failure": false,
-    "matched_steps": ["cancel-order"],
-    "violations": [],
-    "score": 100,
-    "trace_trust": "AGENT_REPORTED"
-  },
-  "session_transcript": [
-    {
-      "sequence": 1,
-      "type": "TOOL_CALL",
-      "summary": {"call_id": "call-002", "tool_name": "mysql.execute"}
+      "type": "MESSAGE",
+      "role": "user",
+      "content": "Please cancel order O10001.",
+      "created_at": "2026-09-15T07:00:00Z"
     },
     {
       "sequence": 2,
-      "type": "TOOL_RESULT",
-      "summary": {"call_id": "call-002", "status": "SUCCESS", "affected_rows": 1}
+      "type": "TOOL_CALL",
+      "tool_name": "sql_executor",
+      "arguments": {"query": "UPDATE orders SET status = 'CANCELLED' WHERE id = 'O10001'"},
+      "created_at": "2026-09-15T07:00:01Z"
     },
     {
       "sequence": 3,
-      "type": "OUTPUT_TEXT",
-      "summary": {"text": "Order O10001 has been cancelled."}
+      "type": "TOOL_RESULT",
+      "tool_name": "sql_executor",
+      "status": "SUCCESS",
+      "result": {"affected_rows": 1},
+      "created_at": "2026-09-15T07:00:02Z"
+    },
+    {
+      "sequence": 4,
+      "type": "MESSAGE",
+      "role": "assistant",
+      "content": "Order O10001 has been cancelled.",
+      "created_at": "2026-09-15T07:00:03Z"
     }
   ],
   "evaluation_criteria": [

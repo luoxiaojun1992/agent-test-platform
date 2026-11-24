@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-test-platform.local/schemas/target-session-context-response.schema.json",
+  "title": "Target Session Context Response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "session_id", "items", "next_cursor"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "session_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "items": {
+      "type": "array",
+      "maxItems": 500,
+      "items": {"$ref": "judge-request.schema.json#/$defs/contextItem"}
+    },
+    "next_cursor": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "minLength": 1, "maxLength": 512}
+      ]
+    }
+  }
+}

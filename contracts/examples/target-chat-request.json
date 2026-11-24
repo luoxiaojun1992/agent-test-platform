@@ -2,13 +2,11 @@
   "schema_version": "1.0",
   "run_id": "01K4Z6Y7X8W9V0T1S2R3Q4P5N6",
   "model": "mock-agent-v1",
-  "mode": "TASK",
   "message": {
     "id": "msg-01K4Z6Y7X8W9V0T1S2R3Q4P5N6",
     "role": "user",
     "content": "Please cancel order O10001."
   },
   "deadline": "2026-09-15T07:01:00Z",
-  "tools": null,
   "knowledge_document_ids": ["kb-doc-order-policy"]
 }

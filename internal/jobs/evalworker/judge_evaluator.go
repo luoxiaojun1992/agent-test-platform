@@ -8,6 +8,8 @@ import (
 	"errors"
 	"strings"
 
+	"agent-test-platform/contracts"
+	"agent-test-platform/internal/agent"
 	"agent-test-platform/internal/evaluation"
 	"agent-test-platform/internal/run"
 )
@@ -17,7 +19,6 @@ const PromptVersion = "judge-v1"
 
 const (
 	judgeThreshold = 70
-	finalThreshold = 70
 )
 
 // JudgeModel describes the configured Judge model for audit records.
@@ -29,22 +30,53 @@ type JudgeModel struct {
 	MaxTokens int
 }
 
-// JudgeEvaluator builds the Judge request from Run evidence and aggregates the verdict.
-type JudgeEvaluator struct {
-	judge *evaluation.Judge
-	model JudgeModel
+// SecretResolver resolves a stored secret (the Target bearer token or the OAuth client secret).
+type SecretResolver interface {
+	Resolve(ctx context.Context, name string) (string, error)
 }
 
-func NewJudgeEvaluator(judge *evaluation.Judge, model JudgeModel) (*JudgeEvaluator, error) {
+// JudgeEvaluator pulls the Target session context and aggregates the Judge verdict.
+type JudgeEvaluator struct {
+	judge     *evaluation.Judge
+	model     JudgeModel
+	secrets   SecretResolver
+	http      agent.HTTPDoer
+	validator *contracts.Validator
+}
+
+func NewJudgeEvaluator(judge *evaluation.Judge, model JudgeModel, secrets SecretResolver, http agent.HTTPDoer, validator *contracts.Validator) (*JudgeEvaluator, error) {
 	if judge == nil || model.Alias == "" || model.Provider == "" || model.Model == "" || model.BaseURL == "" {
 		return nil, errors.New("judge and model identity are required")
 	}
-	return &JudgeEvaluator{judge: judge, model: model}, nil
+	if secrets == nil || http == nil || validator == nil {
+		return nil, errors.New("secret resolver, HTTP client, and validator are required")
+	}
+	return &JudgeEvaluator{judge: judge, model: model, secrets: secrets, http: http, validator: validator}, nil
 }
 
 func (evaluator *JudgeEvaluator) Evaluate(ctx context.Context, job run.EvaluationJob) (run.EvaluationResult, error) {
+	token, err := evaluator.resolveToken(ctx, job.Agent)
+	if err != nil {
+		return run.EvaluationResult{}, RetryableError{Err: err}
+	}
+	client, err := agent.NewSSEClient(job.Agent.Endpoint, token, evaluator.http, evaluator.validator)
+	if err != nil {
+		return run.EvaluationResult{}, err
+	}
+	items, err := client.ListAllSessionContext(ctx, job.SessionID, 0)
+	if err != nil {
+		return run.EvaluationResult{}, RetryableError{Err: err}
+	}
+	contextItems := make([]json.RawMessage, len(items))
+	for index, item := range items {
+		encoded, err := json.Marshal(item)
+		if err != nil {
+			return run.EvaluationResult{}, err
+		}
+		contextItems[index] = encoded
+	}
 	prepared, err := evaluation.BuildRequest(evaluation.RequestInput{Outcome: job.Outcome, Prompt: job.Prompt, CaseJSON: job.CaseJSON,
-		FinalOutput: job.FinalOutput, Deterministic: job.Deterministic, ToolCalls: job.ToolCalls})
+		FinalOutput: job.FinalOutput, SessionContext: contextItems})
 	if err != nil {
 		return run.EvaluationResult{}, err
 	}
@@ -55,7 +87,7 @@ func (evaluator *JudgeEvaluator) Evaluate(ctx context.Context, job run.Evaluatio
 		}
 		return run.EvaluationResult{}, RetryableError{Err: err}
 	}
-	verdict, err := evaluation.Aggregate(prepared.Checks, prepared.Criteria, result, judgeThreshold, finalThreshold)
+	verdict, err := evaluation.Aggregate(prepared.Criteria, result, judgeThreshold)
 	if err != nil {
 		return run.EvaluationResult{}, err
 	}
@@ -87,4 +119,15 @@ func (evaluator *JudgeEvaluator) Evaluate(ctx context.Context, job run.Evaluatio
 		out.InputTokens, out.OutputTokens = &input, &output
 	}
 	return out, nil
+}
+
+func (evaluator *JudgeEvaluator) resolveToken(ctx context.Context, spec run.AgentSpec) (string, error) {
+	if spec.TokenURL != "" {
+		secret, err := evaluator.secrets.Resolve(ctx, spec.ClientSecretRef)
+		if err != nil {
+			return "", err
+		}
+		return agent.FetchClientCredentialsToken(ctx, evaluator.http, spec.TokenURL, spec.ClientID, secret)
+	}
+	return evaluator.secrets.Resolve(ctx, spec.TokenRef)
 }

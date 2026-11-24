@@ -21,13 +21,6 @@ type AdminExecer interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
 
-// RunTarget is what Run provisioning needs from validation MySQL: administrative statements, and a
-// connection to one database, both through the configured administrator account.
-type RunTarget interface {
-	AdminExecer
-	OpenDatabase(ctx context.Context, databaseName string) (*sql.DB, error)
-}
-
 // ProvisionDataset creates the execution database of one Dataset Revision through the configured
 // administrator account. It creates no account. Call it once per validation attempt, with a fresh
 // Revision ID. A failed call leaves what it created in place; validation MySQL objects are deleted manually.
@@ -38,32 +31,6 @@ func ProvisionDataset(ctx context.Context, admin AdminExecer, datasetRevisionID 
 	}
 	if err := createDatabase(ctx, admin, identifiers.Database); err != nil {
 		return DatasetIdentifiers{}, err
-	}
-	return identifiers, nil
-}
-
-// ProvisionRun creates one Test Run's database and loads it with the validated schema and seed
-// statements, through the configured administrator account. It creates no account. It never reuses an
-// existing database: ErrDatabaseExists is returned and nothing else changes. A failed load leaves the
-// database in place for manual deletion.
-func ProvisionRun(ctx context.Context, target RunTarget, runID string, schemaStatements, seedStatements []string) (RunIdentifiers, error) {
-	identifiers, err := DeriveRunIdentifiers(runID)
-	if err != nil {
-		return RunIdentifiers{}, err
-	}
-	if err := createDatabase(ctx, target, identifiers.Database); err != nil {
-		return RunIdentifiers{}, err
-	}
-	database, err := target.OpenDatabase(ctx, identifiers.Database)
-	if err != nil {
-		return RunIdentifiers{}, fmt.Errorf("open run database: %w", err)
-	}
-	defer database.Close()
-	statements := append(append([]string(nil), schemaStatements...), seedStatements...)
-	for index, statement := range statements {
-		if _, err := database.ExecContext(ctx, statement); err != nil {
-			return RunIdentifiers{}, fmt.Errorf("apply run statement %d: %w", index+1, err)
-		}
 	}
 	return identifiers, nil
 }

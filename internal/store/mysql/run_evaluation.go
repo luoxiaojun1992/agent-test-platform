@@ -24,11 +24,20 @@ func (store *RunStore) BeginEvaluation(ctx context.Context, runID string, lease 
 		var (
 			status, input, caseJSON string
 			outcome, finalOutput    sql.NullString
-			deterministic           []byte
+			sessionID               sql.NullString
+			endpoint, tokenRef      sql.NullString
+			model                   sql.NullString
+			clientID, secretRef     sql.NullString
+			tokenURL                sql.NullString
 		)
-		err := tx.QueryRowContext(ctx, `SELECT r.status, r.execution_outcome, r.input_text, r.final_output, CAST(r.deterministic_json AS CHAR), CAST(tc.content_json AS CHAR)
-			FROM test_run r JOIN test_case_revision tc ON tc.id = r.test_case_revision_id WHERE r.id = ? FOR UPDATE`, runID).
-			Scan(&status, &outcome, &input, &finalOutput, &deterministic, &caseJSON)
+		err := tx.QueryRowContext(ctx, `SELECT r.status, r.execution_outcome, r.input_text, r.final_output, r.session_id, CAST(tc.content_json AS CHAR),
+			a.chat_endpoint, a.target_bearer_token_ref, a.target_model, a.client_id, a.client_secret_ref, a.token_url
+			FROM test_run r
+			JOIN test_case_revision tc ON tc.id = r.test_case_revision_id
+			JOIN agent a ON a.id = r.agent_id
+			WHERE r.id = ? FOR UPDATE`, runID).
+			Scan(&status, &outcome, &input, &finalOutput, &sessionID, &caseJSON,
+				&endpoint, &tokenRef, &model, &clientID, &secretRef, &tokenURL)
 		if errors.Is(err, sql.ErrNoRows) {
 			return run.ErrNotFound
 		}
@@ -39,16 +48,14 @@ func (store *RunStore) BeginEvaluation(ctx context.Context, runID string, lease 
 			conflict = true
 			return completeRunLease(ctx, tx, lease)
 		}
-		calls, err := loadToolCalls(ctx, tx, runID)
-		if err != nil {
-			return err
-		}
 		attemptNo, alias, err := startAttempt(ctx, tx, runID)
 		if err != nil {
 			return err
 		}
 		job = run.EvaluationJob{RunID: runID, Outcome: outcome.String, Prompt: input, CaseJSON: json.RawMessage(caseJSON),
-			Deterministic: json.RawMessage(deterministic), ToolCalls: calls, AttemptNo: attemptNo, JudgeAlias: alias}
+			SessionID: sessionID.String, AttemptNo: attemptNo, JudgeAlias: alias,
+			Agent: run.AgentSpec{Endpoint: endpoint.String, TokenRef: tokenRef.String, Model: model.String,
+				ClientID: clientID.String, ClientSecretRef: secretRef.String, TokenURL: tokenURL.String}}
 		if finalOutput.Valid {
 			text := finalOutput.String
 			job.FinalOutput = &text
@@ -227,43 +234,17 @@ func (store *RunStore) Reevaluate(ctx context.Context, sourceID, newID, requestK
 	}
 	rowSum := sha256.Sum256([]byte(requestKey + "/" + newID))
 	if _, err := tx.ExecContext(ctx, `INSERT INTO test_run (id, idempotency_key, request_key, request_sha256, test_case_revision_id, dataset_revision_id,
-			agent_id, repetition_no, status, execution_outcome, input_text, final_output, precondition_json, postcondition_json, state_diff_json,
-			deterministic_json, deterministic_score, actual_output_sha256, started_at, agent_finished_at, environment_cleaned_at)
+			agent_id, repetition_no, status, execution_outcome, input_text, final_output, session_id,
+			actual_output_sha256, started_at, agent_finished_at, environment_cleaned_at)
 		SELECT ?, ?, ?, ?, test_case_revision_id, dataset_revision_id, agent_id,
 			(SELECT COALESCE(MAX(x.repetition_no), 0) + 1 FROM test_run x WHERE x.agent_id = s.agent_id AND x.test_case_revision_id = s.test_case_revision_id),
-			'EVALUATING', execution_outcome, input_text, final_output, precondition_json, postcondition_json, state_diff_json,
-			deterministic_json, deterministic_score, actual_output_sha256, started_at, agent_finished_at, environment_cleaned_at
+			'EVALUATING', execution_outcome, input_text, final_output, session_id,
+			actual_output_sha256, started_at, agent_finished_at, environment_cleaned_at
 		FROM test_run s WHERE s.id = ?`, newID, hex.EncodeToString(rowSum[:]), requestKey, requestSHA256, sourceID); err != nil {
 		if isDuplicate(err) {
 			return run.ErrDuplicate
 		}
 		return fmt.Errorf("insert re-evaluation Run: %w", err)
-	}
-	rows, err := tx.QueryContext(ctx, `SELECT id FROM tool_call_record WHERE test_run_id = ? ORDER BY sequence_no`, sourceID)
-	if err != nil {
-		return fmt.Errorf("list tool calls: %w", err)
-	}
-	var callIDs []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			return err
-		}
-		callIDs = append(callIDs, id)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	for _, callID := range callIDs {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO tool_call_record (id, test_run_id, sequence_no, call_id, parent_call_id, tool_name, arguments_json, arguments_sha256,
-				result_json, result_sha256, error_json, error_sha256, status, trace_source, truncated, original_bytes, duration_ms, started_at)
-			SELECT ?, ?, sequence_no, call_id, parent_call_id, tool_name, arguments_json, arguments_sha256,
-				result_json, result_sha256, error_json, error_sha256, status, trace_source, truncated, original_bytes, duration_ms, started_at
-			FROM tool_call_record WHERE id = ?`, ulid.Make().String(), newID, callID); err != nil {
-			return fmt.Errorf("copy tool call: %w", err)
-		}
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO evaluation_attempt (id, test_run_id, attempt_no, status, judge_model_alias) VALUES (?, ?, 1, 'PENDING', ?)`,
 		ulid.Make().String(), newID, judgeAlias); err != nil {

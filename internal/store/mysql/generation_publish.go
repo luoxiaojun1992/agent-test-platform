@@ -47,8 +47,8 @@ execution_status, execution_database, execution_ready_at, lifecycle_status
 	insertTestCaseSQL         = `INSERT INTO test_case (id, scenario_id, dataset_id) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE id = id`
 	insertTestCaseRevisionSQL = `INSERT INTO test_case_revision (
 id, test_case_id, generation_job_id, scenario_revision_id, dataset_revision_id, revision_no,
-schema_version, agent_mode, tool_evaluation_mode, content_json, content_sha256, lifecycle_status
-) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE id = id`
+schema_version, content_json, content_sha256, lifecycle_status
+) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE id = id`
 	completeGenerationPublishSQL = `UPDATE generation_job
 SET status = 'COMPLETED', current_stage = NULL, finished_at = UTC_TIMESTAMP(6), updated_at = UTC_TIMESTAMP(6)
 WHERE id = ?`
@@ -607,9 +607,7 @@ func (store *GenerationStore) publishTestCases(
 			return fmt.Errorf("canonicalize published candidate %s: %w", clientCaseID, err)
 		}
 		var candidate struct {
-			SchemaVersion      string `json:"schema_version"`
-			AgentMode          string `json:"agent_mode"`
-			ToolEvaluationMode string `json:"tool_evaluation_mode"`
+			SchemaVersion string `json:"schema_version"`
 		}
 		if err := json.Unmarshal(canonicalPublished, &candidate); err != nil {
 			return fmt.Errorf("decode published candidate %s: %w", clientCaseID, err)
@@ -628,7 +626,7 @@ func (store *GenerationStore) publishTestCases(
 		}
 		if _, err := tx.ExecContext(ctx, insertTestCaseRevisionSQL,
 			revisionID, testCaseID, jobID, inputScenarioRevisionID, inputDatasetRevisionID,
-			candidate.SchemaVersion, candidate.AgentMode, candidate.ToolEvaluationMode,
+			candidate.SchemaVersion,
 			canonicalPublished, publishedDigest, lifecycleStatus,
 		); err != nil {
 			return fmt.Errorf("insert test case revision %s: %w", clientCaseID, err)

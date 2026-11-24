@@ -66,7 +66,6 @@ type NormalizedRequest struct {
 	ValidationDBIDs     []string         `json:"validation_db_ids"`
 	DatabaseProfileID   *string          `json:"database_profile_id"`
 	Domain              *string          `json:"domain"`
-	AgentMode           string           `json:"agent_mode"`
 	Capabilities        *[]string        `json:"capabilities"`
 	Difficulty          *DifficultyRange `json:"difficulty"`
 	TestCaseCount       int              `json:"test_case_count"`
@@ -178,7 +177,6 @@ type generationRequestDocument struct {
 	ValidationDBIDs     []string         `json:"validation_db_ids"`
 	DatabaseProfileID   *string          `json:"database_profile_id"`
 	Domain              *string          `json:"domain"`
-	AgentMode           string           `json:"agent_mode"`
 	Capabilities        *[]string        `json:"capabilities"`
 	Difficulty          *DifficultyRange `json:"difficulty"`
 	TestCaseCount       int              `json:"test_case_count"`
@@ -241,13 +239,6 @@ func NormalizeRequest(document json.RawMessage) (NormalizedRequest, error) {
 		return NormalizedRequest{}, fmt.Errorf("Database Profile ID is not allowed when Dataset generation is enabled")
 	}
 
-	agentMode := input.AgentMode
-	if agentMode == "" {
-		agentMode = "TASK"
-	}
-	if agentMode != "ANSWER" && agentMode != "TASK" {
-		return NormalizedRequest{}, fmt.Errorf("unknown agent mode %q", agentMode)
-	}
 	testCaseCount := input.TestCaseCount
 	if testCaseCount == 0 {
 		testCaseCount = 10
@@ -282,8 +273,8 @@ func NormalizeRequest(document json.RawMessage) (NormalizedRequest, error) {
 		Description:   input.Description, TargetAgentID: cloneString(input.TargetAgentID),
 		GenerateDataset: generateDataset, DatabaseProfileID: cloneString(input.DatabaseProfileID),
 		ValidationDBIDs: append([]string{}, input.ValidationDBIDs...),
-		Domain:          cloneString(input.Domain), AgentMode: agentMode,
-		Capabilities: capabilities, Difficulty: cloneDifficulty(input.Difficulty),
+		Domain:          cloneString(input.Domain),
+		Capabilities:    capabilities, Difficulty: cloneDifficulty(input.Difficulty),
 		TestCaseCount: testCaseCount, Coverage: coverage, AutoActivate: autoActivate,
 		RequireManualReview: requireManualReview,
 	}, nil

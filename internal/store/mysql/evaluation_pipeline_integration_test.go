@@ -54,15 +54,14 @@ func TestEvaluationPipelineWithMockJudgeOnMySQL84(t *testing.T) {
 	defer workerDB.Close()
 
 	const source = "01HZZZZZZZZZZZZZZZZZZZZZZ1"
-	caseJSON := `{"expected_output":{"type":"EXACT","value":"ok"},"tool_evaluation_mode":"SESSION_LLM_ONLY","expected_tool_call_chain":null,
+	caseJSON := `{"expected_output":{"type":"EXACT","value":"ok"},
 		"evaluation_criteria":[{"name":"correct","description":"answer is right","weight":1}],"generation_assumptions":[]}`
 	if _, err := workerDB.ExecContext(ctx, `INSERT INTO test_case_revision (id, test_case_id, generation_job_id, scenario_revision_id, dataset_revision_id, revision_no, schema_version,
-		agent_mode, tool_evaluation_mode, content_json, content_sha256, lifecycle_status) VALUES ('T', 'TC', 'G', 'S', 'D', 1, '1.0', 'SINGLE_TURN', 'SESSION_LLM_ONLY', ?, REPEAT('a', 64), 'ACTIVE')`, caseJSON); err != nil {
+		content_json, content_sha256, lifecycle_status) VALUES ('T', 'TC', 'G', 'S', 'D', 1, '1.0', ?, REPEAT('a', 64), 'ACTIVE')`, caseJSON); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := workerDB.ExecContext(ctx, `INSERT INTO test_run (id, idempotency_key, test_case_revision_id, dataset_revision_id, agent_id,
-		status, execution_outcome, input_text, final_output, deterministic_json) VALUES (?, 'k-source', 'T', 'D', 'A', 'COMPLETED', 'COMPLETED', 'hello', 'ok',
-		JSON_ARRAY(JSON_OBJECT('id','state_diff','category','STATE','critical',TRUE,'weight',1,'pass',TRUE,'expected',JSON_OBJECT(),'actual',JSON_OBJECT())))`, source); err != nil {
+		status, execution_outcome, input_text, final_output) VALUES (?, 'k-source', 'T', 'D', 'A', 'COMPLETED', 'COMPLETED', 'hello', 'ok')`, source); err != nil {
 		t.Fatal(err)
 	}
 
@@ -90,7 +89,7 @@ func TestEvaluationPipelineWithMockJudgeOnMySQL84(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	evaluator, err := evalworker.NewJudgeEvaluator(judge, evalworker.JudgeModel{Alias: "judge-a", Provider: "openai", Model: "mock", BaseURL: llmServer.URL, MaxTokens: 2048})
+	evaluator, err := evalworker.NewJudgeEvaluator(judge, evalworker.JudgeModel{Alias: "judge-a", Provider: "openai", Model: "mock", BaseURL: llmServer.URL, MaxTokens: 2048}, fakeSecretResolver{}, &http.Client{}, validator)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,3 +132,7 @@ func TestEvaluationPipelineWithMockJudgeOnMySQL84(t *testing.T) {
 		t.Fatalf("work item %s", itemStatus)
 	}
 }
+
+type fakeSecretResolver struct{}
+
+func (fakeSecretResolver) Resolve(context.Context, string) (string, error) { return "secret", nil }

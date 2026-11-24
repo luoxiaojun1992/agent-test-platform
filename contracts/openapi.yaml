@@ -1119,7 +1119,7 @@ components:
     CreateAgentRequest:
       type: object
       additionalProperties: false
-      required: [name, chat_endpoint, target_bearer_token_ref, target_model, contract_version, tool_evaluation_mode]
+      required: [name, chat_endpoint, target_bearer_token_ref, target_model, contract_version]
       properties:
         name:
           type: string
@@ -1157,8 +1157,6 @@ components:
           maxLength: 255
         contract_version:
           const: '1.0'
-        tool_evaluation_mode:
-          enum: [DETERMINISTIC_CHAIN, SESSION_LLM_ONLY]
         tool_catalog:
           oneOf:
             - type: 'null'
@@ -1167,26 +1165,10 @@ components:
               maxItems: 64
               items:
                 $ref: '#/components/schemas/TargetToolDefinition'
-      allOf:
-        - if:
-            properties:
-              tool_evaluation_mode:
-                const: DETERMINISTIC_CHAIN
-            required: [tool_evaluation_mode]
-          then:
-            required: [tool_catalog]
-            properties:
-              tool_catalog:
-                type: array
-                minItems: 1
-          else:
-            properties:
-              tool_catalog:
-                type: 'null'
     Agent:
       type: object
       additionalProperties: false
-      required: [id, name, chat_endpoint, target_model, contract_version, tool_evaluation_mode, tool_catalog, created_at]
+      required: [id, name, chat_endpoint, target_model, contract_version, tool_catalog, created_at]
       properties:
         id:
           $ref: '#/components/schemas/Ulid'
@@ -1212,8 +1194,6 @@ components:
           maxLength: 255
         contract_version:
           const: '1.0'
-        tool_evaluation_mode:
-          enum: [DETERMINISTIC_CHAIN, SESSION_LLM_ONLY]
         tool_catalog:
           oneOf:
             - type: 'null'
@@ -1406,25 +1386,16 @@ components:
           $ref: '#/components/schemas/Ulid'
         agent_id:
           $ref: '#/components/schemas/Ulid'
+        session_id:
+          type: [string, 'null']
+          maxLength: 128
         final_output:
           type: [string, 'null']
           maxLength: 16000
-        precondition_results:
-          type: [object, 'null']
-        postcondition_results:
-          type: [object, 'null']
-        state_diff:
-          type: [object, 'null']
-        deterministic_details:
-          type: [object, 'null']
         error:
           oneOf:
             - type: 'null'
             - $ref: '#/components/schemas/Error'
-        deterministic_score:
-          type: [number, 'null']
-          minimum: 0
-          maximum: 100
         final_score:
           type: [number, 'null']
           minimum: 0
@@ -1496,7 +1467,7 @@ components:
     BenchmarkEntry:
       type: object
       additionalProperties: false
-      required: [agent_id, run_count, pass_rate, avg_score, critical_failures]
+      required: [agent_id, run_count, pass_rate, avg_score]
       properties:
         agent_id:
           $ref: '#/components/schemas/Ulid'
@@ -1511,9 +1482,6 @@ components:
           type: number
           minimum: 0
           maximum: 100
-        critical_failures:
-          type: integer
-          minimum: 0
     ToolCallRecord:
       type: object
       additionalProperties: false

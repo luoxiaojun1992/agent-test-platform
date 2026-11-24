@@ -123,7 +123,7 @@ func normalizedArtifact(t *testing.T) generation.ArtifactSnapshot {
 		"generate_dataset":true,
 		"database_profile_id":null,
 		"domain":"e-commerce",
-		"agent_mode":"TASK",
+		
 		"capabilities":["MYSQL_EXECUTE","MYSQL_QUERY"],
 		"difficulty":{"min":"MEDIUM","max":"HARD"},
 		"test_case_count":3,

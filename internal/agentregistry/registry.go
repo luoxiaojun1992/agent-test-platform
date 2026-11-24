@@ -22,11 +22,8 @@ import (
 )
 
 const (
-	MaxPageSize = 200
-
-	ModeDeterministicChain = "DETERMINISTIC_CHAIN"
-	ModeSessionLLMOnly     = "SESSION_LLM_ONLY"
-	ContractVersion        = "1.0"
+	MaxPageSize     = 200
+	ContractVersion = "1.0"
 )
 
 var (
@@ -64,7 +61,6 @@ type AgentInput struct {
 	TargetBearerTokenRef string           `json:"target_bearer_token_ref"`
 	TargetModel          string           `json:"target_model"`
 	ContractVersion      string           `json:"contract_version"`
-	ToolEvaluationMode   string           `json:"tool_evaluation_mode"`
 	ToolCatalog          []ToolDefinition `json:"tool_catalog"`
 	// ClientID, ClientSecretRef and TokenURL configure OAuth 2.0 client credentials. When TokenURL
 	// is set, the platform obtains a short-lived access token instead of the static bearer (08).
@@ -75,16 +71,15 @@ type AgentInput struct {
 
 // Agent is a stored Agent under test. It omits the token reference.
 type Agent struct {
-	ID                 string           `json:"id"`
-	Name               string           `json:"name"`
-	Description        string           `json:"description,omitempty"`
-	DatabaseProfileID  *string          `json:"database_profile_id,omitempty"`
-	ChatEndpoint       string           `json:"chat_endpoint"`
-	TargetModel        string           `json:"target_model"`
-	ContractVersion    string           `json:"contract_version"`
-	ToolEvaluationMode string           `json:"tool_evaluation_mode"`
-	ToolCatalog        []ToolDefinition `json:"tool_catalog"`
-	CreatedAt          time.Time        `json:"created_at"`
+	ID                string           `json:"id"`
+	Name              string           `json:"name"`
+	Description       string           `json:"description,omitempty"`
+	DatabaseProfileID *string          `json:"database_profile_id,omitempty"`
+	ChatEndpoint      string           `json:"chat_endpoint"`
+	TargetModel       string           `json:"target_model"`
+	ContractVersion   string           `json:"contract_version"`
+	ToolCatalog       []ToolDefinition `json:"tool_catalog"`
+	CreatedAt         time.Time        `json:"created_at"`
 	// TargetBearerTokenRef is stored but never serialized back to clients.
 	TargetBearerTokenRef string `json:"-"`
 	ClientID             string `json:"client_id,omitempty"`
@@ -142,18 +137,6 @@ func (input AgentInput) Validate() error {
 	}
 	if input.ContractVersion != ContractVersion {
 		return invalid("contract_version must be %s", ContractVersion)
-	}
-	switch input.ToolEvaluationMode {
-	case ModeDeterministicChain:
-		if len(input.ToolCatalog) < 1 {
-			return invalid("tool_catalog is required for %s", ModeDeterministicChain)
-		}
-	case ModeSessionLLMOnly:
-		if input.ToolCatalog != nil {
-			return invalid("tool_catalog must be null for %s", ModeSessionLLMOnly)
-		}
-	default:
-		return invalid("tool_evaluation_mode must be %s or %s", ModeDeterministicChain, ModeSessionLLMOnly)
 	}
 	if len(input.ToolCatalog) > 64 {
 		return invalid("tool_catalog must not exceed 64 tools")
@@ -269,7 +252,7 @@ func (service *Service) CreateAgent(ctx context.Context, key string, input Agent
 	record := AgentRecord{Agent: Agent{
 		ID: ulid.Make().String(), Name: input.Name, Description: input.Description, DatabaseProfileID: input.DatabaseProfileID,
 		ChatEndpoint: input.ChatEndpoint, TargetModel: input.TargetModel, ContractVersion: input.ContractVersion,
-		ToolEvaluationMode: input.ToolEvaluationMode, ToolCatalog: input.ToolCatalog, TargetBearerTokenRef: input.TargetBearerTokenRef,
+		ToolCatalog: input.ToolCatalog, TargetBearerTokenRef: input.TargetBearerTokenRef,
 		ClientID: derefString(input.ClientID), ClientSecretRef: derefString(input.ClientSecretRef), TokenURL: derefString(input.TokenURL),
 	}, IdempotencyKey: key, ConfigSHA256: digest}
 	stored, err := service.store.InsertAgent(ctx, record)

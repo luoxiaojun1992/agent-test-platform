@@ -155,7 +155,7 @@ func TestHTTPAPIToMockJudgeEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	judge, _ := evaluation.NewJudge(gateway, validator, "judge-b", 2048)
-	evaluator, _ := evalworker.NewJudgeEvaluator(judge, evalworker.JudgeModel{Alias: "judge-b", Provider: "openai", Model: "mock", BaseURL: llmServer.URL, MaxTokens: 2048})
+	evaluator, _ := evalworker.NewJudgeEvaluator(judge, evalworker.JudgeModel{Alias: "judge-b", Provider: "openai", Model: "mock", BaseURL: llmServer.URL, MaxTokens: 2048}, fakeSecretResolver{}, &http.Client{}, validator)
 	router, _ := evalworker.NewRouter("judge-b", map[string]evalworker.Evaluator{"judge-b": evaluator})
 	queue, _ := mysqlqueue.New(database)
 	worker, err := evalworker.New(queue, runStore, router, evalworker.Config{Owner: "e2e", LeaseDuration: time.Minute, HeartbeatInterval: 20 * time.Second, PollInterval: time.Second, StageTimeout: time.Minute})
@@ -190,3 +190,7 @@ func open(t *testing.T, config *mysql.Config) *sql.DB {
 	}
 	return sql.OpenDB(connector)
 }
+
+type fakeSecretResolver struct{}
+
+func (fakeSecretResolver) Resolve(context.Context, string) (string, error) { return "secret", nil }

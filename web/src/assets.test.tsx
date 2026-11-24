@@ -129,7 +129,7 @@ describe('GenerateAssetDialog', () => {
 })
 
 describe('RunTestsDialog', () => {
-  const agent = { id: 'A1', name: 'mock-agent', database_profile_id: 'DB1', chat_endpoint: 'http://x', target_model: 'm', contract_version: '1.0', tool_evaluation_mode: 'SESSION_LLM_ONLY' as const, tool_catalog: null, created_at: '' }
+  const agent = { id: 'A1', name: 'mock-agent', database_profile_id: 'DB1', chat_endpoint: 'http://x', target_model: 'm', contract_version: '1.0', tool_catalog: null, created_at: '' }
 
   it('runs the picked cases on the chosen Agent without any suite or snapshot', async () => {
     mocked.searchRevisions.mockResolvedValue({ items: [item('CASE1', { content: { prompt: 'p1' } })], next_cursor: null })

@@ -88,7 +88,7 @@
     "completed": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["schema_version", "event_id", "run_id", "sequence", "type", "created_at", "status", "final_output", "usage"],
+      "required": ["schema_version", "event_id", "run_id", "sequence", "type", "created_at", "status", "session_id", "final_output", "usage"],
       "properties": {
         "schema_version": {"const": "1.0"},
         "event_id": {"type": "string", "minLength": 1, "maxLength": 128},
@@ -97,6 +97,7 @@
         "type": {"const": "response.completed"},
         "created_at": {"type": "string", "format": "date-time"},
         "status": {"const": "COMPLETED"},
+        "session_id": {"type": "string", "minLength": 1, "maxLength": 128},
         "final_output": {"type": "string", "minLength": 1, "maxLength": 16000},
         "usage": {
           "oneOf": [

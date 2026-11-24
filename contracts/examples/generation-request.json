@@ -3,7 +3,6 @@
   "target_agent_id": "01K4Z6Y7X8W9V0T1S2R3Q4P5N6",
   "generate_dataset": true,
   "domain": "e-commerce",
-  "agent_mode": "TASK",
   "capabilities": ["MYSQL_QUERY", "MYSQL_EXECUTE"],
   "difficulty": {
     "min": "MEDIUM",

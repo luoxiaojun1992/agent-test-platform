@@ -23,7 +23,9 @@ const (
 	targetKnowledgeUploadSchema   = "schemas/target-knowledge-upload-request.schema.json"
 	targetKnowledgeAcceptedSchema = "schemas/target-knowledge-upload-response.schema.json"
 	targetKnowledgeStatusSchema   = "schemas/target-knowledge-status-response.schema.json"
+	targetSessionContextSchema    = "schemas/target-session-context-response.schema.json"
 	maxKnowledgeUploadBytes       = 2 * 1024 * 1024
+	maxSessionContextItems        = 100_000
 )
 
 var (
@@ -329,4 +331,90 @@ func (client *SSEClient) ListAllTools(ctx context.Context) ([]TargetTool, error)
 		cursor = *result.NextCursor
 	}
 	return nil, fmt.Errorf("Target tool list exceeds %d pages", maxToolListPages)
+}
+
+// SessionContextItem is one item of a Target session's LLM context: a message, a Tool call, or a
+// Tool result. Fields are populated by item type.
+type SessionContextItem struct {
+	Sequence  int             `json:"sequence"`
+	Type      string          `json:"type"`
+	Role      string          `json:"role,omitempty"`
+	Content   string          `json:"content,omitempty"`
+	ToolName  string          `json:"tool_name,omitempty"`
+	Arguments json.RawMessage `json:"arguments,omitempty"`
+	Status    string          `json:"status,omitempty"`
+	Result    json.RawMessage `json:"result,omitempty"`
+	Error     json.RawMessage `json:"error,omitempty"`
+	CreatedAt time.Time       `json:"created_at"`
+}
+
+// SessionContextPage is one page of a Target session's LLM context.
+type SessionContextPage struct {
+	SchemaVersion string               `json:"schema_version"`
+	SessionID     string               `json:"session_id"`
+	Items         []SessionContextItem `json:"items"`
+	NextCursor    *string              `json:"next_cursor"`
+}
+
+// GetSessionContext fetches one page of a Target session's LLM context.
+func (client *SSEClient) GetSessionContext(ctx context.Context, sessionID, cursor string, limit int) (SessionContextPage, error) {
+	if strings.TrimSpace(sessionID) == "" {
+		return SessionContextPage{}, fmt.Errorf("session ID is required")
+	}
+	query := url.Values{}
+	if cursor != "" {
+		query.Set("cursor", cursor)
+	}
+	if limit > 0 {
+		query.Set("limit", strconv.Itoa(limit))
+	}
+	path := "/v1/sessions/" + url.PathEscape(sessionID) + "/context"
+	if encoded := query.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
+	requestContext, cancel := context.WithTimeout(ctx, client.timeouts.UploadRequest)
+	defer cancel()
+	body, _, err := client.doJSON(requestContext, http.MethodGet, path, "", nil, http.StatusOK, targetSessionContextSchema)
+	if err != nil {
+		return SessionContextPage{}, err
+	}
+	var page SessionContextPage
+	if err := json.Unmarshal(body, &page); err != nil {
+		return SessionContextPage{}, fmt.Errorf("decode session context: %w", err)
+	}
+	if page.SessionID != sessionID {
+		return SessionContextPage{}, fmt.Errorf("Target session context ID mismatch")
+	}
+	return page, nil
+}
+
+// ListAllSessionContext pages through the whole context of a session until the cursor is exhausted,
+// bounded by maxItems.
+func (client *SSEClient) ListAllSessionContext(ctx context.Context, sessionID string, maxItems int) ([]SessionContextItem, error) {
+	if maxItems <= 0 {
+		maxItems = maxSessionContextItems
+	}
+	var all []SessionContextItem
+	lastSequence := 0
+	cursor := ""
+	for {
+		page, err := client.GetSessionContext(ctx, sessionID, cursor, 100)
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range page.Items {
+			if item.Sequence <= lastSequence {
+				return nil, fmt.Errorf("Target session context sequence not strictly increasing")
+			}
+			lastSequence = item.Sequence
+			all = append(all, item)
+			if len(all) > maxItems {
+				return nil, fmt.Errorf("Target session context exceeds %d items", maxItems)
+			}
+		}
+		if page.NextCursor == nil {
+			return all, nil
+		}
+		cursor = *page.NextCursor
+	}
 }

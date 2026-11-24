@@ -7,7 +7,6 @@ import (
 
 const (
 	testDatasetRevisionID = "01K4Z6Y7X8W9V0T1S2R3Q4P5N6"
-	testRunID             = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
 )
 
 func TestDeriveDatasetIdentifiers(t *testing.T) {
@@ -34,28 +33,6 @@ func TestDeriveDatasetIdentifiersRejectsUnsafeID(t *testing.T) {
 	} {
 		if _, err := DeriveDatasetIdentifiers(id); err == nil {
 			t.Errorf("DeriveDatasetIdentifiers(%q) succeeded", id)
-		}
-	}
-}
-
-func TestDeriveRunIdentifiers(t *testing.T) {
-	t.Parallel()
-
-	identifiers, err := DeriveRunIdentifiers(strings.ToLower(testRunID))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if identifiers.Database != "run_01arz3ndektsv4rrffq69g5fav" {
-		t.Errorf("database = %q", identifiers.Database)
-	}
-}
-
-func TestDeriveRunIdentifiersRejectsUnsafeInput(t *testing.T) {
-	t.Parallel()
-
-	for _, id := range []string{"", "01ARZ3NDEKTSV4RRFFQ69G5FA", "81ARZ3NDEKTSV4RRFFQ69G5FAV"} {
-		if _, err := DeriveRunIdentifiers(id); err == nil {
-			t.Errorf("DeriveRunIdentifiers(%q) succeeded", id)
 		}
 	}
 }

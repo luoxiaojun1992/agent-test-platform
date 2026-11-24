@@ -4,7 +4,7 @@
   "title": "LLM Judge Request",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "execution_outcome", "prompt", "expected_output", "actual_output", "generation_assumptions", "deterministic_results", "tool_evaluation_mode", "expected_tool_call_chain", "actual_tool_calls", "tool_chain_match", "session_transcript", "evaluation_criteria"],
+  "required": ["schema_version", "execution_outcome", "prompt", "expected_output", "actual_output", "generation_assumptions", "session_context", "evaluation_criteria"],
   "properties": {
     "schema_version": {"const": "1.0"},
     "execution_outcome": {"enum": ["COMPLETED", "AGENT_ERROR", "TIMEOUT", "CANCELLED"]},
@@ -12,33 +12,10 @@
     "expected_output": {"$ref": "create-test-case.schema.json#/$defs/expectedOutput"},
     "actual_output": {"type": ["string", "null"], "maxLength": 16000},
     "generation_assumptions": {"type": "array", "maxItems": 32, "items": {"type": "string", "maxLength": 1000}},
-    "deterministic_results": {
+    "session_context": {
       "type": "array",
-      "maxItems": 128,
-      "items": {"$ref": "#/$defs/deterministicResult"}
-    },
-    "tool_evaluation_mode": {"enum": ["DETERMINISTIC_CHAIN", "SESSION_LLM_ONLY"]},
-    "expected_tool_call_chain": {
-      "oneOf": [
-        {"type": "null"},
-        {"$ref": "create-test-case.schema.json#/$defs/toolChain"}
-      ]
-    },
-    "actual_tool_calls": {
-      "type": "array",
-      "maxItems": 32,
-      "items": {"$ref": "#/$defs/toolCallEvidence"}
-    },
-    "tool_chain_match": {
-      "oneOf": [
-        {"type": "null"},
-        {"$ref": "#/$defs/toolChainMatch"}
-      ]
-    },
-    "session_transcript": {
-      "type": "array",
-      "maxItems": 128,
-      "items": {"$ref": "#/$defs/sessionEntry"}
+      "maxItems": 512,
+      "items": {"$ref": "#/$defs/contextItem"}
     },
     "evaluation_criteria": {
       "type": "array",
@@ -47,78 +24,69 @@
       "items": {"$ref": "create-test-case.schema.json#/$defs/criterion"}
     }
   },
-  "allOf": [
-    {
-      "if": {
-        "properties": {"tool_evaluation_mode": {"const": "DETERMINISTIC_CHAIN"}},
-        "required": ["tool_evaluation_mode"]
-      },
-      "then": {
-        "properties": {
-          "expected_tool_call_chain": {"type": "object"},
-          "tool_chain_match": {"type": "object"}
-        }
-      },
-      "else": {
-        "properties": {
-          "expected_tool_call_chain": {"type": "null"},
-          "tool_chain_match": {"type": "null"}
-        }
-      }
-    }
-  ],
   "$defs": {
-    "sessionEntry": {
+    "contextItem": {
+      "oneOf": [
+        {"$ref": "#/$defs/message"},
+        {"$ref": "#/$defs/toolCall"},
+        {"$ref": "#/$defs/toolResult"}
+      ]
+    },
+    "message": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["sequence", "type", "summary"],
+      "required": ["sequence", "type", "role", "content", "created_at"],
       "properties": {
-        "sequence": {"type": "integer", "minimum": 1, "maximum": 256},
-        "type": {"enum": ["OUTPUT_TEXT", "TOOL_CALL", "TOOL_RESULT", "ERROR"]},
-        "summary": {"type": "object"}
+        "sequence": {"type": "integer", "minimum": 1},
+        "type": {"const": "MESSAGE"},
+        "role": {"enum": ["user", "assistant", "system", "tool"]},
+        "content": {"type": "string", "maxLength": 16000},
+        "created_at": {"type": "string", "format": "date-time"}
       }
     },
-    "deterministicResult": {
+    "toolCall": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "category", "critical", "weight", "pass", "expected", "actual"],
+      "required": ["sequence", "type", "tool_name", "arguments", "created_at"],
       "properties": {
-        "id": {"type": "string", "minLength": 1, "maxLength": 128},
-        "category": {"enum": ["OUTPUT", "STATE", "MUTATION", "TOOL", "SAFETY"]},
-        "critical": {"type": "boolean"},
-        "weight": {"type": "number", "minimum": 0, "maximum": 1},
-        "pass": {"type": "boolean"},
-        "expected": {},
-        "actual": {},
-        "reason": {"type": "string", "maxLength": 1000}
-      }
-    },
-    "toolCallEvidence": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["sequence", "call_id", "tool_name", "arguments", "status", "result_summary", "trace_source"],
-      "properties": {
-        "sequence": {"type": "integer", "minimum": 1, "maximum": 32},
-        "call_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "sequence": {"type": "integer", "minimum": 1},
+        "type": {"const": "TOOL_CALL"},
         "tool_name": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,127}$"},
         "arguments": {"type": "object"},
-        "status": {"enum": ["SUCCESS", "ERROR"]},
-        "result_summary": {"type": "object"},
-        "trace_source": {"enum": ["AGENT_REPORTED"]}
+        "created_at": {"type": "string", "format": "date-time"}
       }
     },
-    "toolChainMatch": {
+    "toolResult": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["pass", "critical_failure", "matched_steps", "violations", "score", "trace_trust"],
+      "required": ["sequence", "type", "tool_name", "status", "created_at"],
       "properties": {
-        "pass": {"type": "boolean"},
-        "critical_failure": {"type": "boolean"},
-        "matched_steps": {"type": "array", "uniqueItems": true, "items": {"type": "string", "maxLength": 128}},
-        "violations": {"type": "array", "maxItems": 64, "items": {"type": "string", "maxLength": 1000}},
-        "score": {"type": "number", "minimum": 0, "maximum": 100},
-        "trace_trust": {"enum": ["AGENT_REPORTED"]}
-      }
+        "sequence": {"type": "integer", "minimum": 1},
+        "type": {"const": "TOOL_RESULT"},
+        "tool_name": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,127}$"},
+        "status": {"enum": ["SUCCESS", "ERROR"]},
+        "result": {},
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message"],
+          "properties": {
+            "code": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,63}$"},
+            "message": {"type": "string", "minLength": 1, "maxLength": 2000}
+          }
+        },
+        "created_at": {"type": "string", "format": "date-time"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "SUCCESS"}}, "required": ["status"]},
+          "then": {"required": ["result"], "not": {"required": ["error"]}}
+        },
+        {
+          "if": {"properties": {"status": {"const": "ERROR"}}, "required": ["status"]},
+          "then": {"required": ["error"], "not": {"required": ["result"]}}
+        }
+      ]
     }
   }
 }

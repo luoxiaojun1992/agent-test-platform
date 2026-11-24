@@ -50,8 +50,8 @@ func TestSSEClientStreamsAndNormalizesSession(t *testing.T) {
 	if result.Status != "COMPLETED" || result.FinalOutput == nil || *result.FinalOutput != "Order cancelled." {
 		t.Fatalf("result = %#v", result)
 	}
-	if len(streamed) != 6 || len(result.Events) != 6 || len(result.ToolCalls) != 1 || len(result.Normalized) != 1 || len(result.Evidence) != 1 {
-		t.Fatalf("events=%d calls=%d normalized=%d evidence=%d", len(streamed), len(result.ToolCalls), len(result.Normalized), len(result.Evidence))
+	if len(streamed) != 6 || len(result.Events) != 6 || len(result.ToolCalls) != 1 || len(result.Evidence) != 1 {
+		t.Fatalf("events=%d calls=%d evidence=%d", len(streamed), len(result.ToolCalls), len(result.Evidence))
 	}
 	if result.ToolCalls[0].ToolName != "mysql.execute" || result.ToolCalls[0].Result == nil || result.ToolCalls[0].Result.AffectedRows == nil || *result.ToolCalls[0].Result.AffectedRows != 1 {
 		t.Fatalf("Tool call = %#v", result.ToolCalls[0])
@@ -113,10 +113,10 @@ func TestSSEClientRequiresBearerAndEventStream(t *testing.T) {
 
 func validChatRequest() ChatRequest {
 	return ChatRequest{
-		SchemaVersion: "1.0", RunID: sseRunID, Model: "mock-agent-v1", Mode: "TASK",
-		Message:  ChatMessage{ID: "msg-" + sseRunID, Role: "user", Content: "Cancel order O10001."},
-		Deadline: time.Now().UTC().Add(time.Minute),
-		Tools:    nil, KnowledgeDocumentIDs: []string{},
+		SchemaVersion: "1.0", RunID: sseRunID, Model: "mock-agent-v1",
+		Message:              ChatMessage{ID: "msg-" + sseRunID, Role: "user", Content: "Cancel order O10001."},
+		Deadline:             time.Now().UTC().Add(time.Minute),
+		KnowledgeDocumentIDs: []string{},
 	}
 }
 
@@ -128,7 +128,7 @@ func validSSEEvents() []map[string]any {
 		{"schema_version": "1.0", "event_id": "evt-3", "run_id": sseRunID, "sequence": 3, "type": "response.tool_call", "created_at": createdAt, "tool_sequence": 1, "call_id": "call-1", "parent_call_id": nil, "tool_name": "mysql.execute", "arguments": map[string]any{"sql": "UPDATE orders SET status = 'CANCELLED' WHERE id = 'O10001'"}},
 		{"schema_version": "1.0", "event_id": "evt-4", "run_id": sseRunID, "sequence": 4, "type": "response.tool_result", "created_at": createdAt, "tool_sequence": 1, "call_id": "call-1", "duration_ms": 8, "result": map[string]any{"status": "SUCCESS", "output": map[string]any{"affected_rows": 1}, "affected_rows": 1, "truncated": false}},
 		{"schema_version": "1.0", "event_id": "evt-5", "run_id": sseRunID, "sequence": 5, "type": "response.output_text.delta", "created_at": createdAt, "delta": "cancelled."},
-		{"schema_version": "1.0", "event_id": "evt-6", "run_id": sseRunID, "sequence": 6, "type": "response.completed", "created_at": createdAt, "status": "COMPLETED", "final_output": "Order cancelled.", "usage": map[string]any{"input_tokens": 10, "output_tokens": 4}},
+		{"schema_version": "1.0", "event_id": "evt-6", "run_id": sseRunID, "sequence": 6, "type": "response.completed", "created_at": createdAt, "status": "COMPLETED", "session_id": "sess-1", "final_output": "Order cancelled.", "usage": map[string]any{"input_tokens": 10, "output_tokens": 4}},
 	}
 }
 

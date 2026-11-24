@@ -74,17 +74,16 @@ func (store *RunStore) BeginExecution(ctx context.Context, runID string, lease r
 	conflict := false
 	err := store.inLeaseTx(ctx, runID, lease, func(tx *sql.Tx) error {
 		var (
-			status, input, caseJSON, schemaSQL, seedSQL, endpoint, model, toolMode string
-			datasetID                                                              string
-			tokenRef                                                               sql.NullString
-			cancelAt                                                               sql.NullTime
-			tools                                                                  []byte
-			dbName, dbHost, dbUser, dbSecret, dbTLS, dbCA                          sql.NullString
-			dbPort                                                                 sql.NullInt64
-			clientID, clientSecretRef, tokenURL                                    sql.NullString
+			status, input, caseJSON, schemaSQL, seedSQL, endpoint, model string
+			datasetID                                                    string
+			tokenRef                                                     sql.NullString
+			cancelAt                                                     sql.NullTime
+			dbName, dbHost, dbUser, dbSecret, dbTLS, dbCA                sql.NullString
+			dbPort                                                       sql.NullInt64
+			clientID, clientSecretRef, tokenURL                          sql.NullString
 		)
 		err := tx.QueryRowContext(ctx, `SELECT r.status, r.input_text, r.cancel_requested_at, r.dataset_revision_id,
-			CAST(tc.content_json AS CHAR), d.schema_sql, d.seed_sql, a.chat_endpoint, a.target_bearer_token_ref, a.target_model, a.tool_evaluation_mode, a.tool_catalog_json,
+			CAST(tc.content_json AS CHAR), d.schema_sql, d.seed_sql, a.chat_endpoint, a.target_bearer_token_ref, a.target_model,
 			a.client_id, a.client_secret_ref, a.token_url,
 			p.host, p.port, p.database_name, p.username, p.password_secret_ref, p.tls_mode, p.ca_certificate_pem
 			FROM test_run r
@@ -93,7 +92,7 @@ func (store *RunStore) BeginExecution(ctx context.Context, runID string, lease r
 			JOIN agent a ON a.id = r.agent_id
 			LEFT JOIN database_profile p ON p.id = a.database_profile_id
 			WHERE r.id = ? FOR UPDATE`, runID).Scan(&status, &input, &cancelAt, &datasetID, &caseJSON, &schemaSQL, &seedSQL,
-			&endpoint, &tokenRef, &model, &toolMode, &tools, &clientID, &clientSecretRef, &tokenURL, &dbHost, &dbPort, &dbName, &dbUser, &dbSecret, &dbTLS, &dbCA)
+			&endpoint, &tokenRef, &model, &clientID, &clientSecretRef, &tokenURL, &dbHost, &dbPort, &dbName, &dbUser, &dbSecret, &dbTLS, &dbCA)
 		if errors.Is(err, sql.ErrNoRows) {
 			return run.ErrNotFound
 		}
@@ -109,7 +108,7 @@ func (store *RunStore) BeginExecution(ctx context.Context, runID string, lease r
 		}
 		job = run.Job{RunID: runID, Status: run.StatusPreparing, Prompt: input, CancelRequested: cancelAt.Valid,
 			CaseJSON: json.RawMessage(caseJSON), DatasetID: datasetID, SchemaSQL: schemaSQL, SeedSQL: seedSQL,
-			Agent: run.AgentSpec{Endpoint: endpoint, TokenRef: tokenRef.String, ClientID: clientID.String, ClientSecretRef: clientSecretRef.String, TokenURL: tokenURL.String, Model: model, ToolMode: toolMode, ToolsJSON: tools}}
+			Agent: run.AgentSpec{Endpoint: endpoint, TokenRef: tokenRef.String, ClientID: clientID.String, ClientSecretRef: clientSecretRef.String, TokenURL: tokenURL.String, Model: model}}
 		if dbHost.Valid {
 			job.AgentDatabase = &run.AgentDatabase{Host: dbHost.String, Port: int(dbPort.Int64), Database: dbName.String, Username: dbUser.String,
 				PasswordSecretRef: dbSecret.String, TLSMode: dbTLS.String, CACertificatePEM: dbCA.String}
@@ -166,14 +165,13 @@ func (store *RunStore) Settle(ctx context.Context, runID string, lease run.Lease
 	}
 	return store.inLeaseTx(ctx, runID, lease, func(tx *sql.Tx) error {
 		finished := settlement.Status != run.StatusEvaluating
-		result, err := tx.ExecContext(ctx, `UPDATE test_run SET status=?, execution_outcome=?, final_output=?, actual_output_sha256=?,
-			precondition_json=?, postcondition_json=?, state_diff_json=?, deterministic_json=?, deterministic_score=?, error_json=?,
+		result, err := tx.ExecContext(ctx, `UPDATE test_run SET status=?, execution_outcome=?, session_id=?, final_output=?, actual_output_sha256=?,
+			error_json=?,
 			started_at=COALESCE(started_at, ?), agent_finished_at=?, environment_cleaned_at=?,
 			finished_at=IF(?, UTC_TIMESTAMP(6), finished_at)
 			WHERE id = ? AND status IN ('PREPARING','RUNNING')`,
-			settlement.Status, nullableStringValue(settlement.Outcome), settlement.FinalOutput, settlement.OutputSHA256,
-			nullableJSON(settlement.Precondition), nullableJSON(settlement.Postcondition), nullableJSON(settlement.StateDiff),
-			nullableJSON(settlement.Deterministic), settlement.Score, nullableJSON(settlement.Error),
+			settlement.Status, nullableStringValue(settlement.Outcome), settlement.SessionID, settlement.FinalOutput, settlement.OutputSHA256,
+			nullableJSON(settlement.Error),
 			nullableTime(settlement.StartedAt), nullableTime(settlement.AgentFinishedAt), nullableTime(settlement.CleanedAt), finished, runID)
 		if err != nil {
 			return err

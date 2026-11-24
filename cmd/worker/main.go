@@ -273,7 +273,7 @@ func run() error {
 			return fmt.Errorf("create Judge %s: %w", model.ModelAlias, err)
 		}
 		evaluator, err := evalworker.NewJudgeEvaluator(judge, evalworker.JudgeModel{Alias: model.ModelAlias, Provider: string(model.Provider),
-			Model: model.ModelName, BaseURL: model.ModelBaseURL, MaxTokens: tokens})
+			Model: model.ModelName, BaseURL: model.ModelBaseURL, MaxTokens: tokens}, secretService, &http.Client{}, validator)
 		if err != nil {
 			return fmt.Errorf("create Judge evaluator %s: %w", model.ModelAlias, err)
 		}

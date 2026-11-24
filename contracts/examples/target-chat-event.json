@@ -6,6 +6,7 @@
   "type": "response.completed",
   "created_at": "2026-09-15T07:00:02Z",
   "status": "COMPLETED",
+  "session_id": "01K4Z6Y7X8W9V0T1S2R3Q4P5N6",
   "final_output": "Order O10001 has been cancelled.",
   "usage": {
     "input_tokens": 420,

@@ -13,7 +13,7 @@ func TestNormalizeRequestAppliesOnlyDeterministicDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if normalized.AgentMode != "TASK" || normalized.TestCaseCount != 10 || !normalized.AutoActivate {
+	if normalized.TestCaseCount != 10 || !normalized.AutoActivate {
 		t.Fatalf("defaults = %#v", normalized)
 	}
 	if !normalized.GenerateDataset || normalized.DatabaseProfileID != nil || normalized.TargetAgentID != nil {

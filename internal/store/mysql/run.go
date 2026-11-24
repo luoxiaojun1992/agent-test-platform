@@ -28,8 +28,7 @@ const (
 	latestEvaluation = `(SELECT e.%s FROM evaluation_attempt e WHERE e.test_run_id = r.id AND e.status = 'COMPLETED' ORDER BY e.attempt_no DESC LIMIT 1)`
 
 	runColumns = `r.id, r.status, r.execution_outcome, r.test_case_revision_id, r.dataset_revision_id, r.agent_id,
-r.final_output, r.precondition_json, r.postcondition_json, r.state_diff_json, r.deterministic_json, r.error_json,
-r.deterministic_score, %s, %s, r.created_at`
+r.session_id, r.final_output, r.error_json, %s, %s, r.created_at`
 )
 
 var selectRun = `SELECT ` + fmt.Sprintf(runColumns, fmt.Sprintf(latestEvaluation, "final_score"), fmt.Sprintf(latestEvaluation, "pass")) + ` FROM test_run r`
@@ -43,25 +42,22 @@ func rawJSON(value []byte) json.RawMessage {
 
 func scanRun(row rowScanner) (run.Run, error) {
 	var item run.Run
-	var outcome, output sql.NullString
-	var pre, post, diff, det, errJSON []byte
-	var detScore, finalScore sql.NullFloat64
+	var outcome, output, sessionID sql.NullString
+	var errJSON []byte
+	var finalScore sql.NullFloat64
 	var pass sql.NullBool
 	if err := row.Scan(&item.ID, &item.Status, &outcome, &item.TestCaseRevisionID, &item.DatasetRevisionID, &item.AgentID,
-		&output, &pre, &post, &diff, &det, &errJSON, &detScore, &finalScore, &pass, &item.CreatedAt); err != nil {
+		&sessionID, &output, &errJSON, &finalScore, &pass, &item.CreatedAt); err != nil {
 		return item, err
 	}
 	if outcome.Valid {
 		item.ExecutionOutcome = &outcome.String
 	}
+	item.SessionID = sessionID.String
 	if output.Valid {
 		item.FinalOutput = &output.String
 	}
-	item.PreconditionResults, item.PostconditionResults, item.StateDiff = rawJSON(pre), rawJSON(post), rawJSON(diff)
-	item.DeterministicDetails, item.Error = rawJSON(det), rawJSON(errJSON)
-	if detScore.Valid {
-		item.DeterministicScore = &detScore.Float64
-	}
+	item.Error = rawJSON(errJSON)
 	if finalScore.Valid {
 		item.FinalScore = &finalScore.Float64
 	}
@@ -390,8 +386,7 @@ func (store *RunStore) Benchmark(ctx context.Context, caseIDs []string) ([]run.B
 	rows, err := store.database.QueryContext(ctx,
 		`SELECT r.agent_id, COUNT(*),
 COALESCE(100 * AVG(CASE WHEN `+fmt.Sprintf(latestEvaluation, "pass")+` THEN 1 ELSE 0 END), 0),
-COALESCE(AVG(`+fmt.Sprintf(latestEvaluation, "final_score")+`), 0),
-COALESCE(SUM(CASE WHEN JSON_CONTAINS(r.deterministic_json, '{"critical": true, "pass": false}') THEN 1 ELSE 0 END), 0)
+COALESCE(AVG(`+fmt.Sprintf(latestEvaluation, "final_score")+`), 0)
 FROM test_run r
 WHERE r.test_case_revision_id IN (`+strings.TrimSuffix(strings.Repeat("?,", len(caseIDs)), ",")+`) AND r.status = 'COMPLETED' AND r.execution_outcome IS NOT NULL AND r.execution_outcome <> 'INFRA_ERROR'
 GROUP BY r.agent_id ORDER BY r.agent_id`, caseArgs...)
@@ -402,7 +397,7 @@ GROUP BY r.agent_id ORDER BY r.agent_id`, caseArgs...)
 	items := []run.BenchmarkEntry{}
 	for rows.Next() {
 		var item run.BenchmarkEntry
-		if err := rows.Scan(&item.AgentID, &item.RunCount, &item.PassRate, &item.AvgScore, &item.CriticalFailures); err != nil {
+		if err := rows.Scan(&item.AgentID, &item.RunCount, &item.PassRate, &item.AvgScore); err != nil {
 			return nil, fmt.Errorf("scan benchmark: %w", err)
 		}
 		items = append(items, item)
