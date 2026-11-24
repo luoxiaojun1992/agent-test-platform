@@ -2,10 +2,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-test-platform.local/schemas/agent-request.schema.json",
   "title": "Create Agent Request",
-  "description": "target_bearer_token_ref names a credential entered on the Credentials page; the token is never part of the request. DETERMINISTIC_CHAIN requires a Tool Catalog and SESSION_LLM_ONLY forbids one.",
+  "description": "target_bearer_token_ref names a credential entered on the Credentials page; the token is never part of the request. tool_catalog lists the Tools the Agent under test supports and informs Test Case generation.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["name", "chat_endpoint", "target_bearer_token_ref", "target_model", "contract_version", "tool_evaluation_mode"],
+  "required": ["name", "chat_endpoint", "target_bearer_token_ref", "target_model", "contract_version"],
   "properties": {
     "name": {"type": "string", "minLength": 1, "maxLength": 255},
     "description": {"type": "string", "maxLength": 2000},
@@ -17,7 +17,6 @@
     "token_url": {"type": "string", "pattern": "^https?://", "maxLength": 2048},
     "target_model": {"type": "string", "minLength": 1, "maxLength": 255},
     "contract_version": {"const": "1.0"},
-    "tool_evaluation_mode": {"enum": ["DETERMINISTIC_CHAIN", "SESSION_LLM_ONLY"]},
     "tool_catalog": {
       "oneOf": [
         {"type": "null"},
@@ -38,12 +37,5 @@
         }
       ]
     }
-  },
-  "allOf": [
-    {
-      "if": {"properties": {"tool_evaluation_mode": {"const": "DETERMINISTIC_CHAIN"}}, "required": ["tool_evaluation_mode"]},
-      "then": {"required": ["tool_catalog"], "properties": {"tool_catalog": {"type": "array"}}},
-      "else": {"properties": {"tool_catalog": {"type": "null"}}}
-    }
-  ]
+  }
 }

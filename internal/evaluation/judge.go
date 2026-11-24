@@ -27,17 +27,6 @@ type Criterion struct {
 	Weight      float64 `json:"weight"`
 }
 
-type DeterministicCheck struct {
-	ID       string
-	Category string
-	Critical bool
-	Weight   float64
-	Pass     bool
-	Expected any
-	Actual   any
-	Reason   string
-}
-
 type JudgeResult struct {
 	SchemaVersion     string            `json:"schema_version"`
 	Criteria          []CriterionResult `json:"criteria"`
@@ -62,12 +51,10 @@ type ToolFinding struct {
 }
 
 type Verdict struct {
-	DeterministicScore float64
-	LLMScore           float64
-	FinalScore         float64
-	CriticalPass       bool
-	JudgePass          bool
-	Pass               bool
+	LLMScore   float64
+	FinalScore float64
+	JudgePass  bool
+	Pass       bool
 }
 
 type Judge struct {
@@ -122,19 +109,15 @@ func (judge *Judge) Evaluate(ctx context.Context, requestJSON []byte, criteria [
 	return result, completion, nil
 }
 
-// Aggregate computes all scores and applies deterministic hard gates.
-func Aggregate(checks []DeterministicCheck, criteria []Criterion, result JudgeResult, judgeThreshold, finalThreshold float64) (Verdict, error) {
-	if judgeThreshold < 0 || judgeThreshold > 100 || finalThreshold < 0 || finalThreshold > 100 {
-		return Verdict{}, fmt.Errorf("thresholds must be in [0,100]")
+// Aggregate computes the Judge verdict from the criterion scores. The Judge is the sole scorer.
+func Aggregate(criteria []Criterion, result JudgeResult, judgeThreshold float64) (Verdict, error) {
+	if judgeThreshold < 0 || judgeThreshold > 100 {
+		return Verdict{}, fmt.Errorf("threshold must be in [0,100]")
 	}
 	if err := validateCriteria(criteria); err != nil {
 		return Verdict{}, err
 	}
 	if err := validateCriterionResults(criteria, result.Criteria); err != nil {
-		return Verdict{}, err
-	}
-	deterministicScore, criticalPass, err := deterministicAggregate(checks)
-	if err != nil {
 		return Verdict{}, err
 	}
 	resultByID := make(map[string]CriterionResult, len(result.Criteria))
@@ -145,43 +128,11 @@ func Aggregate(checks []DeterministicCheck, criteria []Criterion, result JudgeRe
 	for _, criterion := range criteria {
 		llmScore += criterion.Weight * float64(resultByID[criterion.Name].Score)
 	}
-	finalScore := 0.4*deterministicScore + 0.6*llmScore
 	judgePass := llmScore >= judgeThreshold
 	return Verdict{
-		DeterministicScore: roundScore(deterministicScore), LLMScore: roundScore(llmScore), FinalScore: roundScore(finalScore),
-		CriticalPass: criticalPass, JudgePass: judgePass,
-		Pass: criticalPass && judgePass && finalScore >= finalThreshold,
+		LLMScore: roundScore(llmScore), FinalScore: roundScore(llmScore),
+		JudgePass: judgePass, Pass: judgePass,
 	}, nil
-}
-
-func deterministicAggregate(checks []DeterministicCheck) (float64, bool, error) {
-	if len(checks) == 0 {
-		return 0, false, fmt.Errorf("at least one deterministic check is required")
-	}
-	totalWeight := 0.0
-	score := 0.0
-	criticalPass := true
-	seen := make(map[string]struct{}, len(checks))
-	for _, check := range checks {
-		if strings.TrimSpace(check.ID) == "" || check.Weight < 0 || check.Weight > 1 {
-			return 0, false, fmt.Errorf("invalid deterministic check")
-		}
-		if _, exists := seen[check.ID]; exists {
-			return 0, false, fmt.Errorf("duplicate deterministic check %q", check.ID)
-		}
-		seen[check.ID] = struct{}{}
-		totalWeight += check.Weight
-		if check.Pass {
-			score += check.Weight * 100
-		}
-		if check.Critical && !check.Pass {
-			criticalPass = false
-		}
-	}
-	if math.Abs(totalWeight-1) > 1e-6 {
-		return 0, false, fmt.Errorf("deterministic weights sum to %v, want 1", totalWeight)
-	}
-	return score, criticalPass, nil
 }
 
 func validateCriteria(criteria []Criterion) error {

@@ -18,7 +18,7 @@ func (f *fakeAgentService) CreateAgent(_ context.Context, _ string, in agentregi
 	return agentregistry.Agent{
 		ID: "01JZ0000000000000000000000", Name: in.Name, Description: in.Description, DatabaseProfileID: in.DatabaseProfileID,
 		ChatEndpoint: in.ChatEndpoint, TargetModel: in.TargetModel, ContractVersion: in.ContractVersion,
-		ToolEvaluationMode: in.ToolEvaluationMode, ToolCatalog: in.ToolCatalog, CreatedAt: time.Unix(0, 0).UTC(),
+		ToolCatalog: in.ToolCatalog, CreatedAt: time.Unix(0, 0).UTC(),
 	}, nil
 }
 func (f *fakeAgentService) GetAgent(context.Context, string) (agentregistry.Agent, error) {
@@ -49,7 +49,7 @@ func doAgentRequest(server *Server, method, path, body string) *httptest.Respons
 
 func TestCreateAgentAndList(t *testing.T) {
 	server := agentTestServer(t, &fakeAgentService{})
-	base := `{"chat_endpoint":"https://agent.example/chat","target_bearer_token_ref":"tok","target_model":"m","contract_version":"1.0","tool_evaluation_mode":"SESSION_LLM_ONLY",`
+	base := `{"chat_endpoint":"https://agent.example/chat","target_bearer_token_ref":"tok","target_model":"m","contract_version":"1.0",`
 	if r := doAgentRequest(server, http.MethodPost, "/api/v1/agents", base+`"name":"a"}`); r.Code != http.StatusCreated {
 		t.Fatalf("create = %d %s", r.Code, r.Body)
 	}
@@ -74,11 +74,10 @@ func TestCreateAgentSchemaRules(t *testing.T) {
 		body string
 		code int
 	}{
-		{base + `"tool_evaluation_mode":"DETERMINISTIC_CHAIN","tool_catalog":` + tool + `}`, http.StatusCreated},
-		{base + `"tool_evaluation_mode":"DETERMINISTIC_CHAIN"}`, http.StatusBadRequest},
-		{base + `"tool_evaluation_mode":"SESSION_LLM_ONLY"}`, http.StatusCreated},
-		{base + `"tool_evaluation_mode":"SESSION_LLM_ONLY","tool_catalog":` + tool + `}`, http.StatusBadRequest},
-		{strings.Replace(base, "https://agent.example/chat", "ftp://x", 1) + `"tool_evaluation_mode":"SESSION_LLM_ONLY"}`, http.StatusBadRequest},
+		{base + `"tool_catalog":` + tool + `}`, http.StatusCreated},
+		{base + `"tool_catalog":null}`, http.StatusCreated},
+		{base + `"tool_catalog":[{"name":"UPPER","description":"d","input_schema":{}}]}`, http.StatusBadRequest},
+		{strings.Replace(base, "https://agent.example/chat", "ftp://x", 1) + `"tool_catalog":null}`, http.StatusBadRequest},
 	}
 	for i, c := range cases {
 		if r := doAgentRequest(server, http.MethodPost, path, c.body); r.Code != c.code {

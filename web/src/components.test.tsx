@@ -22,9 +22,9 @@ function renderWith(ui: ReactElement, path = '/') {
 }
 
 const run = (overrides: Partial<api2.TestRun> = {}): api2.TestRun => ({
-  id: '01HZZZZZZZZZZZZZZZZZZZZZZ1', status: 'COMPLETED', execution_outcome: 'COMPLETED', test_case_revision_id: 'T', dataset_revision_id: 'D', agent_id: 'A',
-  final_output: 'the answer', precondition_results: null, postcondition_results: null, state_diff: null, deterministic_details: null, error: null,
-  deterministic_score: 100, final_score: 92.5, pass: true, created_at: '2026-11-19T10:00:00Z', ...overrides,
+  id: '01HZZZZZZZZZZZZZZZZZZZZZZ1', status: 'COMPLETED', execution_outcome: 'COMPLETED', test_case_revision_id: 'T', dataset_revision_id: 'D', agent_id: 'A', session_id: 'sess-1',
+  final_output: 'the answer', error: null,
+  final_score: 92.5, pass: true, created_at: '2026-11-19T10:00:00Z', ...overrides,
 })
 
 beforeEach(() => vi.clearAllMocks())

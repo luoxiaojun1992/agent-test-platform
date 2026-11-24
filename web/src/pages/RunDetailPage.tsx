@@ -46,9 +46,9 @@ export function RunDetailPage({ token }: { token: string }) {
             { label: '状态', value: <Badge value={data.status} /> },
             { label: '执行结果', value: data.execution_outcome ? <Badge value={data.execution_outcome} /> : '—' },
             { label: '结论', value: <PassTag pass={data.pass} /> },
-            { label: '确定性得分', value: <Score value={data.deterministic_score} /> },
             { label: '最终得分', value: <Score value={data.final_score} /> },
             { label: 'Agent', value: <Mono>{data.agent_id}</Mono> },
+            { label: 'Session', value: <Mono>{data.session_id}</Mono> },
             { label: '测试用例版本', value: <Mono>{data.test_case_revision_id}</Mono> },
             { label: '创建时间', value: formatDate(data.created_at) },
           ]} />
@@ -56,7 +56,7 @@ export function RunDetailPage({ token }: { token: string }) {
       )}
       <Tabs active={tab} onChange={setTab} tabs={[
         { key: 'result', label: '执行结果' }, { key: 'tools', label: `Tool 调用（${calls.data?.items.length ?? 0}）` },
-        { key: 'checks', label: '确定性检查' }, { key: 'evals', label: `评测尝试（${attempts.data?.items.length ?? 0}）` },
+        { key: 'evals', label: `评测尝试（${attempts.data?.items.length ?? 0}）` },
       ]} />
       {tab === 'result' && data && (
         <Card title="Agent 最终输出"><JsonView value={data.final_output} />{data.error ? <><h3>错误</h3><JsonView value={data.error} /></> : null}</Card>
@@ -74,14 +74,6 @@ export function RunDetailPage({ token }: { token: string }) {
               { key: 'src', title: '来源', render: (call) => call.trace_source },
             ]} />
         </Card>
-      )}
-      {tab === 'checks' && data && (
-        <>
-          <Card title="确定性检查"><JsonView value={data.deterministic_details} /></Card>
-          <Card title="状态变更 diff"><JsonView value={data.state_diff} /></Card>
-          <Card title="前置条件"><JsonView value={data.precondition_results} /></Card>
-          <Card title="后置条件"><JsonView value={data.postcondition_results} /></Card>
-        </>
       )}
       {tab === 'evals' && (
         <Card flush>

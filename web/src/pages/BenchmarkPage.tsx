@@ -24,7 +24,6 @@ export function BenchmarkPage({ token }: { token: string }) {
             { key: 'runs', title: '有效运行数', render: (entry) => entry.run_count },
             { key: 'rate', title: '通过率', render: (entry) => `${entry.pass_rate.toFixed(1)}%` },
             { key: 'score', title: '平均得分', render: (entry) => <Score value={entry.avg_score} /> },
-            { key: 'crit', title: '关键失败数', render: (entry) => entry.critical_failures },
           ]} />
       </Card>
     </>

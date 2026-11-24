@@ -67,22 +67,18 @@ type Request struct {
 
 // Run is the public Test Run view. JSON members are verbatim stored documents.
 type Run struct {
-	ID                   string          `json:"id"`
-	Status               string          `json:"status"`
-	ExecutionOutcome     *string         `json:"execution_outcome,omitempty"`
-	TestCaseRevisionID   string          `json:"test_case_revision_id"`
-	DatasetRevisionID    string          `json:"dataset_revision_id"`
-	AgentID              string          `json:"agent_id"`
-	FinalOutput          *string         `json:"final_output"`
-	PreconditionResults  json.RawMessage `json:"precondition_results"`
-	PostconditionResults json.RawMessage `json:"postcondition_results"`
-	StateDiff            json.RawMessage `json:"state_diff"`
-	DeterministicDetails json.RawMessage `json:"deterministic_details"`
-	Error                json.RawMessage `json:"error"`
-	DeterministicScore   *float64        `json:"deterministic_score"`
-	FinalScore           *float64        `json:"final_score"`
-	Pass                 *bool           `json:"pass"`
-	CreatedAt            time.Time       `json:"created_at"`
+	ID                 string          `json:"id"`
+	Status             string          `json:"status"`
+	ExecutionOutcome   *string         `json:"execution_outcome,omitempty"`
+	TestCaseRevisionID string          `json:"test_case_revision_id"`
+	DatasetRevisionID  string          `json:"dataset_revision_id"`
+	AgentID            string          `json:"agent_id"`
+	SessionID          string          `json:"session_id"`
+	FinalOutput        *string         `json:"final_output"`
+	Error              json.RawMessage `json:"error"`
+	FinalScore         *float64        `json:"final_score"`
+	Pass               *bool           `json:"pass"`
+	CreatedAt          time.Time       `json:"created_at"`
 }
 
 // ToolCall is one stored Tool Call Record.
@@ -115,11 +111,10 @@ type Evaluation struct {
 // Only COMPLETED Runs whose execution outcome reached the Agent count; INVALID_TEST_DATA, INFRA_ERROR and unfinished
 // Runs are excluded from every figure (docs/architecture.md section 14).
 type BenchmarkEntry struct {
-	AgentID          string  `json:"agent_id"`
-	RunCount         int     `json:"run_count"`
-	PassRate         float64 `json:"pass_rate"`
-	AvgScore         float64 `json:"avg_score"`
-	CriticalFailures int     `json:"critical_failures"`
+	AgentID  string  `json:"agent_id"`
+	RunCount int     `json:"run_count"`
+	PassRate float64 `json:"pass_rate"`
+	AvgScore float64 `json:"avg_score"`
 }
 
 // Case is one Test Case Revision to run.

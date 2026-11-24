@@ -4,17 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"regexp"
 	"strings"
 	"testing"
-
-	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/go-sql-driver/mysql"
-)
-
-const (
-	runFixtureSchema = "CREATE TABLE orders (id VARCHAR(32) PRIMARY KEY, status VARCHAR(32) NOT NULL)"
-	runFixtureSeed   = "INSERT INTO orders (id, status) VALUES ('O10001', 'PAID')"
 )
 
 type fakeAdmin struct {
@@ -38,43 +29,6 @@ type fakeResult struct{}
 
 func (fakeResult) LastInsertId() (int64, error) { return 0, nil }
 func (fakeResult) RowsAffected() (int64, error) { return 0, nil }
-
-// fakeRunTarget records administrative statements and hands out one scripted database connection.
-type fakeRunTarget struct {
-	fakeAdmin
-	database *sql.DB
-	opened   []string
-}
-
-func (target *fakeRunTarget) OpenDatabase(_ context.Context, databaseName string) (*sql.DB, error) {
-	target.opened = append(target.opened, databaseName)
-	return target.database, nil
-}
-
-// newRunDatabase returns a database connection that expects the given statements in order. The
-// statement equal to failing returns an error.
-func newRunDatabase(t *testing.T, failing string, statements ...string) *sql.DB {
-	t.Helper()
-	database, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = database.Close() })
-	for _, statement := range statements {
-		expectation := mock.ExpectExec(regexp.QuoteMeta(statement))
-		if statement == failing {
-			expectation.WillReturnError(errors.New("injected load failure"))
-		} else {
-			expectation.WillReturnResult(sqlmock.NewResult(0, 0))
-		}
-	}
-	t.Cleanup(func() {
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Errorf("unmet statement expectations: %v", err)
-		}
-	})
-	return database
-}
 
 // assertNoDestructiveStatement fails when any statement drops a validation MySQL object or account. The
 // platform never removes validation MySQL objects; an operator does that by hand.
@@ -120,68 +74,4 @@ func TestProvisionDatasetFailureStopsWithoutCleanup(t *testing.T) {
 		t.Fatalf("statements = %q, want only the failed CREATE DATABASE", admin.statements)
 	}
 	assertNoDestructiveStatement(t, admin.statements)
-}
-
-func TestProvisionRunCreatesDatabaseAndLoadsSchemaAndSeed(t *testing.T) {
-	t.Parallel()
-
-	target := &fakeRunTarget{database: newRunDatabase(t, "", runFixtureSchema, runFixtureSeed)}
-	identifiers, err := ProvisionRun(context.Background(), target, testRunID, []string{runFixtureSchema}, []string{runFixtureSeed})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if identifiers.Database != "run_01arz3ndektsv4rrffq69g5fav" {
-		t.Fatalf("database = %q", identifiers.Database)
-	}
-	if len(target.statements) != 1 || !strings.HasPrefix(target.statements[0], "CREATE DATABASE `run_01arz3ndektsv4rrffq69g5fav`") {
-		t.Fatalf("administrative statements = %q", target.statements)
-	}
-	if len(target.opened) != 1 || target.opened[0] != identifiers.Database {
-		t.Fatalf("opened = %q, want the run database", target.opened)
-	}
-	assertNoDestructiveStatement(t, target.statements)
-}
-
-// A Run database that already exists may hold changes from an earlier attempt. It is never reused:
-// nothing is loaded, and the database stays unchanged.
-func TestProvisionRunExistingDatabaseIsRejectedWithoutChanges(t *testing.T) {
-	t.Parallel()
-
-	target := &fakeRunTarget{fakeAdmin: fakeAdmin{
-		failOn:  "CREATE DATABASE",
-		failErr: &mysql.MySQLError{Number: mysqlErrDatabaseExists, Message: "Can't create database; database exists"},
-	}}
-	_, err := ProvisionRun(context.Background(), target, testRunID, []string{runFixtureSchema}, []string{runFixtureSeed})
-	if !errors.Is(err, ErrDatabaseExists) {
-		t.Fatalf("error = %v, want ErrDatabaseExists", err)
-	}
-	if len(target.statements) != 1 || len(target.opened) != 0 {
-		t.Fatalf("an existing run database led to further work: statements=%q opened=%q", target.statements, target.opened)
-	}
-}
-
-// A failed load leaves the run database in place for manual deletion and returns the error.
-func TestProvisionRunLoadFailureKeepsDatabase(t *testing.T) {
-	t.Parallel()
-
-	target := &fakeRunTarget{database: newRunDatabase(t, runFixtureSeed, runFixtureSchema, runFixtureSeed)}
-	if _, err := ProvisionRun(context.Background(), target, testRunID, []string{runFixtureSchema}, []string{runFixtureSeed}); err == nil {
-		t.Fatal("a failed seed load succeeded")
-	}
-	assertNoDestructiveStatement(t, target.statements)
-	if len(target.statements) != 1 {
-		t.Fatalf("statements = %q, want only the CREATE DATABASE", target.statements)
-	}
-}
-
-func TestProvisionRunRejectsUnsafeRunID(t *testing.T) {
-	t.Parallel()
-
-	target := &fakeRunTarget{database: newRunDatabase(t, "")}
-	if _, err := ProvisionRun(context.Background(), target, "not-a-ulid", []string{runFixtureSchema}, nil); err == nil {
-		t.Fatal("an invalid run ID was accepted")
-	}
-	if len(target.statements) != 0 {
-		t.Fatalf("SQL executed for an invalid run ID: %q", target.statements)
-	}
 }

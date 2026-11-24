@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	agentColumnsSQL = `id, name, description, database_profile_id, chat_endpoint, target_model, contract_version, tool_evaluation_mode, tool_catalog_json, client_id, token_url, created_at`
+	agentColumnsSQL = `id, name, description, database_profile_id, chat_endpoint, target_model, contract_version, tool_catalog_json, client_id, token_url, created_at`
 )
 
 // AgentStore persists Agents under test in Platform MySQL.
@@ -52,10 +52,10 @@ func (store *AgentStore) InsertAgent(ctx context.Context, record agentregistry.A
 		return agentregistry.Agent{}, fmt.Errorf("encode Agent config: %w", err)
 	}
 	_, err = store.database.ExecContext(ctx, `INSERT INTO agent (id, name, description, database_profile_id, chat_endpoint,
-target_bearer_token_ref, target_model, contract_version, tool_evaluation_mode, tool_catalog_json,
-client_id, client_secret_ref, token_url, config_json, config_sha256, idempotency_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+target_bearer_token_ref, target_model, contract_version, tool_catalog_json,
+client_id, client_secret_ref, token_url, config_json, config_sha256, idempotency_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		agent.ID, agent.Name, nullableText(agent.Description), nullableProfile(agent.DatabaseProfileID), agent.ChatEndpoint,
-		agent.TargetBearerTokenRef, agent.TargetModel, agent.ContractVersion, agent.ToolEvaluationMode, catalog,
+		agent.TargetBearerTokenRef, agent.TargetModel, agent.ContractVersion, catalog,
 		nullableText(agent.ClientID), nullableText(agent.ClientSecretRef), nullableText(agent.TokenURL),
 		string(config), record.ConfigSHA256, record.IdempotencyKey)
 	if isDuplicate(err) {
@@ -81,7 +81,7 @@ func (store *AgentStore) FindAgentByIdempotencyKey(ctx context.Context, key stri
 	err := store.database.QueryRowContext(ctx,
 		`SELECT `+agentColumnsSQL+`, config_sha256 FROM agent WHERE idempotency_key = ?`, key).
 		Scan(&agent.ID, &agent.Name, &desc, &profile, &agent.ChatEndpoint, &agent.TargetModel, &agent.ContractVersion,
-			&agent.ToolEvaluationMode, &catalog, &clientID, &tokenURL, &agent.CreatedAt, &digest)
+			&catalog, &clientID, &tokenURL, &agent.CreatedAt, &digest)
 	if errors.Is(err, sql.ErrNoRows) {
 		return record, agentregistry.ErrNotFound
 	}
@@ -159,7 +159,7 @@ func scanAgent(row interface{ Scan(...any) error }) (agentregistry.Agent, error)
 		tokenURL sql.NullString
 	)
 	if err := row.Scan(&agent.ID, &agent.Name, &desc, &profile, &agent.ChatEndpoint, &agent.TargetModel,
-		&agent.ContractVersion, &agent.ToolEvaluationMode, &catalog, &clientID, &tokenURL, &agent.CreatedAt); err != nil {
+		&agent.ContractVersion, &catalog, &clientID, &tokenURL, &agent.CreatedAt); err != nil {
 		return agentregistry.Agent{}, err
 	}
 	agent.Description = desc.String

@@ -7,7 +7,6 @@ import (
 	"net/http"
 
 	"agent-test-platform/internal/evidence"
-	"agent-test-platform/internal/toolmatch"
 )
 
 const (
@@ -63,85 +62,79 @@ func (err *HTTPError) Error() string {
 	return fmt.Sprintf("Agent HTTP status %d: %s", err.StatusCode, err.Body)
 }
 
-func normalizeToolCalls(toolCalls []ToolCall) ([]toolmatch.Call, []evidence.Record, error) {
-	calls := make([]toolmatch.Call, len(toolCalls))
+func normalizeToolCalls(toolCalls []ToolCall) ([]evidence.Record, error) {
 	records := make([]evidence.Record, len(toolCalls))
 	totalEvidenceBytes := 0
 	for index, call := range toolCalls {
 		argumentBytes, err := json.Marshal(call.Arguments)
 		if err != nil {
-			return nil, nil, fmt.Errorf("call %s arguments: %w", call.CallID, err)
+			return nil, fmt.Errorf("call %s arguments: %w", call.CallID, err)
 		}
 		if len(argumentBytes) > maxArgumentBytes {
-			return nil, nil, fmt.Errorf("call %s arguments exceed %d bytes", call.CallID, maxArgumentBytes)
+			return nil, fmt.Errorf("call %s arguments exceed %d bytes", call.CallID, maxArgumentBytes)
 		}
 		totalEvidenceBytes += len(argumentBytes)
-		result := toolmatch.Result{Status: toolmatch.StatusError}
 		record := evidence.Record{
 			Sequence: call.Sequence, CallID: call.CallID, ParentCallID: call.ParentCallID,
 			ToolName: call.ToolName, Arguments: argumentBytes, Status: evidence.StatusError,
 			Source: evidence.SourceAgentReported, DurationMS: call.DurationMS,
 		}
-		record.ArgumentDigest, err = toolmatch.CanonicalJSONDigest(call.Arguments)
+		record.ArgumentDigest, err = evidence.CanonicalJSONDigest(argumentBytes)
 		if err != nil {
-			return nil, nil, fmt.Errorf("call %s argument digest: %w", call.CallID, err)
+			return nil, fmt.Errorf("call %s argument digest: %w", call.CallID, err)
 		}
 		if call.Result != nil {
 			resultBytes, err := json.Marshal(call.Result)
 			if err != nil {
-				return nil, nil, fmt.Errorf("call %s result: %w", call.CallID, err)
+				return nil, fmt.Errorf("call %s result: %w", call.CallID, err)
 			}
 			if len(resultBytes) > maxResultBytes {
-				return nil, nil, fmt.Errorf("call %s result exceeds %d bytes", call.CallID, maxResultBytes)
+				return nil, fmt.Errorf("call %s result exceeds %d bytes", call.CallID, maxResultBytes)
 			}
 			totalEvidenceBytes += len(resultBytes)
-			result.Status = toolmatch.StatusSuccess
-			result.AffectedRows = call.Result.AffectedRows
-			result.Digest = call.Result.SHA256
-			if call.Result.Truncated && result.Digest == "" {
-				return nil, nil, fmt.Errorf("call %s truncated result requires full SHA-256", call.CallID)
+			resultDigest := call.Result.SHA256
+			if call.Result.Truncated && resultDigest == "" {
+				return nil, fmt.Errorf("call %s truncated result requires full SHA-256", call.CallID)
 			}
-			outputDigest, err := toolmatch.CanonicalJSONDigest(call.Result.Output)
+			outputBytes, err := json.Marshal(call.Result.Output)
 			if err != nil {
-				return nil, nil, fmt.Errorf("call %s result digest: %w", call.CallID, err)
+				return nil, fmt.Errorf("call %s result output: %w", call.CallID, err)
 			}
-			if result.Digest == "" {
-				result.Digest = outputDigest
-			} else if !call.Result.Truncated && result.Digest != outputDigest {
-				return nil, nil, fmt.Errorf("call %s result SHA-256 does not match output", call.CallID)
+			outputDigest, err := evidence.CanonicalJSONDigest(outputBytes)
+			if err != nil {
+				return nil, fmt.Errorf("call %s result digest: %w", call.CallID, err)
+			}
+			if resultDigest == "" {
+				resultDigest = outputDigest
+			} else if !call.Result.Truncated && resultDigest != outputDigest {
+				return nil, fmt.Errorf("call %s result SHA-256 does not match output", call.CallID)
 			}
 			record.Result = resultBytes
-			record.ResultDigest = result.Digest
+			record.ResultDigest = resultDigest
 			record.Status = evidence.StatusSuccess
 			record.Truncated = call.Result.Truncated
 			record.OriginalBytes = call.Result.OriginalBytes
 		} else {
 			errorBytes, err := json.Marshal(call.Error)
 			if err != nil {
-				return nil, nil, fmt.Errorf("call %s error: %w", call.CallID, err)
+				return nil, fmt.Errorf("call %s error: %w", call.CallID, err)
 			}
 			totalEvidenceBytes += len(errorBytes)
 			record.Error = errorBytes
-			result.Digest, err = toolmatch.CanonicalJSONDigest(call.Error)
+			record.ErrorDigest, err = evidence.CanonicalJSONDigest(errorBytes)
 			if err != nil {
-				return nil, nil, fmt.Errorf("call %s error digest: %w", call.CallID, err)
+				return nil, fmt.Errorf("call %s error digest: %w", call.CallID, err)
 			}
-			record.ErrorDigest = result.Digest
-		}
-		calls[index] = toolmatch.Call{
-			Sequence: call.Sequence, CallID: call.CallID, ToolName: call.ToolName,
-			Arguments: call.Arguments, Result: result,
 		}
 		if err := record.Validate(); err != nil {
-			return nil, nil, fmt.Errorf("call %s evidence: %w", call.CallID, err)
+			return nil, fmt.Errorf("call %s evidence: %w", call.CallID, err)
 		}
 		records[index] = record
 	}
 	if totalEvidenceBytes > maxTotalEvidenceBytes {
-		return nil, nil, fmt.Errorf("tool evidence exceeds %d bytes", maxTotalEvidenceBytes)
+		return nil, fmt.Errorf("tool evidence exceeds %d bytes", maxTotalEvidenceBytes)
 	}
-	normalized, err := toolmatch.NormalizeAgentCalls(calls)
-	return normalized, records, err
+	return records, nil
 }
 
 func readLimited(reader io.Reader, limit int64) ([]byte, error) {

@@ -4,25 +4,14 @@
   "title": "Target Platform Chat Request",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "run_id", "model", "mode", "message", "deadline", "tools", "knowledge_document_ids"],
+  "required": ["schema_version", "run_id", "model", "message", "deadline", "knowledge_document_ids"],
   "properties": {
     "schema_version": {"const": "1.0"},
     "run_id": {"type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"},
     "model": {"type": "string", "minLength": 1, "maxLength": 255},
-    "mode": {"enum": ["ANSWER", "TASK"]},
+    "session_id": {"type": "string", "minLength": 1, "maxLength": 128},
     "message": {"$ref": "#/$defs/message"},
     "deadline": {"type": "string", "format": "date-time"},
-    "tools": {
-      "oneOf": [
-        {"type": "null"},
-        {
-          "type": "array",
-          "uniqueItems": true,
-          "maxItems": 64,
-          "items": {"$ref": "#/$defs/tool"}
-        }
-      ]
-    },
     "knowledge_document_ids": {
       "type": "array",
       "uniqueItems": true,
@@ -39,16 +28,6 @@
         "id": {"type": "string", "minLength": 1, "maxLength": 128},
         "role": {"const": "user"},
         "content": {"type": "string", "minLength": 1, "maxLength": 4000}
-      }
-    },
-    "tool": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["name", "description", "input_schema"],
-      "properties": {
-        "name": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,127}$"},
-        "description": {"type": "string", "minLength": 1, "maxLength": 1000},
-        "input_schema": {"type": "object"}
       }
     }
   }

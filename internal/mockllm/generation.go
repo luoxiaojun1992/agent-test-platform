@@ -69,7 +69,6 @@ var (
 	jobIDPattern      = regexp.MustCompile(`job_id="([^"]+)"`)
 	scenarioIDPattern = regexp.MustCompile(`scenario_revision_id="([^"]+)"`)
 	datasetIDPattern  = regexp.MustCompile(`dataset_revision_id="([^"]+)"`)
-	modePattern       = regexp.MustCompile(`agent_mode must be "([A-Z]+)"`)
 )
 
 // scriptedToolCall answers the generation Tool loops: the Dataset Critic (read the table, then submit its review) and the
@@ -97,60 +96,30 @@ func scriptedToolCall(request completionRequest) (string, any, bool, error) {
 }
 
 func scriptedTestCase(messages []decodedMessage) (string, any, bool, error) {
-	var system, user string
+	var user string
 	for _, message := range messages {
-		switch message.Role {
-		case "system":
-			system = contentText(message)
-		case "user":
-			if user == "" {
-				user = contentText(message)
-			}
+		if message.Role == "user" && user == "" {
+			user = contentText(message)
 		}
 	}
-	job, scenario, dataset, mode := firstMatch(jobIDPattern, user), firstMatch(scenarioIDPattern, user), firstMatch(datasetIDPattern, user), firstMatch(modePattern, system)
+	job, scenario, dataset := firstMatch(jobIDPattern, user), firstMatch(scenarioIDPattern, user), firstMatch(datasetIDPattern, user)
 	if job == "" || scenario == "" || dataset == "" {
 		return "", nil, false, fmt.Errorf("mock Test Case generator could not find the fixed ids in the prompt")
 	}
 	index := countToolResults(messages) % mockOrderCount
 	order := "O" + strconv.Itoa(index+1)
-	status := func(value string) []any {
-		return []any{map[string]any{
-			"id": "order-status-" + strings.ToLower(value), "query": "SELECT status FROM orders WHERE id = '" + order + "'",
-			"expected": map[string]any{
-				"columns": []any{map[string]any{"name": "status", "type": "STRING"}},
-				"rows":    []any{[]any{map[string]any{"type": "STRING", "value": value}}},
-				"ordered": true, "truncated": false,
-			},
-			"critical": true,
-		}}
-	}
 	candidate := map[string]any{
-		"schema_version": "1.0", "job_id": job, "client_case_id": "order-" + strings.ToLower(order) + "-" + strings.ToLower(mode),
-		"scenario_revision_id": scenario, "dataset_revision_id": dataset, "agent_mode": mode,
-		"preconditions": status("PAID"), "knowledge_documents": []any{},
-		"tool_evaluation_mode": "SESSION_LLM_ONLY", "expected_tool_call_chain": nil,
+		"schema_version": "1.0", "job_id": job, "client_case_id": "order-" + strings.ToLower(order),
+		"scenario_revision_id": scenario, "dataset_revision_id": dataset,
+		"prompt":              "What is the current status of order " + order + "?",
+		"knowledge_documents": []any{},
+		"expected_output":     map[string]any{"type": "SEMANTIC", "value": "The response states that order " + order + " is PAID."},
 		"evaluation_criteria": []any{
 			map[string]any{"name": "outcome_correctness", "description": "The response reports the correct outcome for the order.", "weight": 0.5},
 			map[string]any{"name": "response_completeness", "description": "The response names the order and its state.", "weight": 0.5},
 		},
 		"difficulty": "EASY", "generation_assumptions": []any{},
 		"difficulty_profile": map[string]any{"data_complexity": 1, "reasoning_complexity": 1, "tool_complexity": 1, "ambiguity": 1, "multi_step": 1, "state_change_complexity": 1, "adversarial_complexity": 1},
-	}
-	if mode == "TASK" {
-		candidate["prompt"] = "Please cancel order " + order + "."
-		candidate["expected_output"] = map[string]any{"type": "SEMANTIC", "value": "The response confirms that order " + order + " was cancelled."}
-		candidate["postconditions"] = status("CANCELLED")
-		candidate["allowed_state_changes"] = []any{map[string]any{
-			"table": "orders", "operation": "UPDATE", "columns": []any{"status"},
-			"predicate": map[string]any{"column": "id", "operator": "=", "value": order}, "min_affected_rows": 1, "max_affected_rows": 1,
-		}}
-	} else {
-		candidate["agent_mode"] = "ANSWER"
-		candidate["prompt"] = "What is the current status of order " + order + "?"
-		candidate["expected_output"] = map[string]any{"type": "SEMANTIC", "value": "The response states that order " + order + " is PAID."}
-		candidate["postconditions"] = []any{}
-		candidate["allowed_state_changes"] = []any{}
 	}
 	return "create_test_case", candidate, true, nil
 }

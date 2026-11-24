@@ -151,12 +151,11 @@ func TestSchemasRejectInvalidDocuments(t *testing.T) {
 			},
 		},
 		{
-			name:        "task test case has no critical tool step",
+			name:        "test case criterion weight exceeds maximum",
 			examplePath: "examples/test-case.json",
 			mutate: func(document map[string]any) {
-				chain := document["expected_tool_call_chain"].(map[string]any)
-				steps := chain["steps"].([]any)
-				steps[0].(map[string]any)["critical"] = false
+				criteria := document["evaluation_criteria"].([]any)
+				criteria[0].(map[string]any)["weight"] = 1.5
 			},
 		},
 		{

@@ -42,8 +42,6 @@ type AgentSpec struct {
 	ClientSecretRef string
 	TokenURL        string
 	Model           string
-	ToolMode        string
-	ToolsJSON       json.RawMessage
 }
 
 // AgentDatabase is the database of the Agent under test. The platform uses it only to write test data; its
@@ -77,14 +75,10 @@ type Job struct {
 type Settlement struct {
 	Status          string
 	Outcome         string
+	SessionID       string
 	FinalOutput     *string
 	OutputSHA256    *string
-	Precondition    json.RawMessage
-	Postcondition   json.RawMessage
-	StateDiff       json.RawMessage
-	Deterministic   json.RawMessage
 	Error           json.RawMessage
-	Score           *float64
 	StartedAt       *time.Time
 	AgentFinishedAt *time.Time
 	CleanedAt       *time.Time

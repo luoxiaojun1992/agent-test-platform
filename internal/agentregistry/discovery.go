@@ -50,7 +50,7 @@ func (discovery *Discovery) DiscoverTools(ctx context.Context, input DiscoveryIn
 		return nil, fmt.Errorf("%w: %v", ErrDiscoveryFailed, err)
 	}
 	check := AgentInput{Name: "x", ChatEndpoint: input.ChatEndpoint, TargetBearerTokenRef: input.TargetBearerTokenRef,
-		TargetModel: "m", ContractVersion: ContractVersion, ToolEvaluationMode: ModeDeterministicChain, ToolCatalog: tools}
+		TargetModel: "m", ContractVersion: ContractVersion, ToolCatalog: tools}
 	if err := check.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrDiscoveryFailed, err)
 	}

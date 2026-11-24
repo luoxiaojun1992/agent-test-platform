@@ -16,7 +16,6 @@ import (
 
 	"agent-test-platform/contracts"
 	"agent-test-platform/internal/evidence"
-	"agent-test-platform/internal/toolmatch"
 )
 
 const (
@@ -57,14 +56,13 @@ func DefaultTargetTimeouts() TargetTimeouts {
 }
 
 type ChatRequest struct {
-	SchemaVersion        string        `json:"schema_version"`
-	RunID                string        `json:"run_id"`
-	Model                string        `json:"model"`
-	Mode                 string        `json:"mode"`
-	Message              ChatMessage   `json:"message"`
-	Deadline             time.Time     `json:"deadline"`
-	Tools                *[]TargetTool `json:"tools"`
-	KnowledgeDocumentIDs []string      `json:"knowledge_document_ids"`
+	SchemaVersion        string      `json:"schema_version"`
+	RunID                string      `json:"run_id"`
+	Model                string      `json:"model"`
+	SessionID            string      `json:"session_id,omitempty"`
+	Message              ChatMessage `json:"message"`
+	Deadline             time.Time   `json:"deadline"`
+	KnowledgeDocumentIDs []string    `json:"knowledge_document_ids"`
 }
 
 type ChatMessage struct {
@@ -92,12 +90,12 @@ type SessionEvent struct {
 type ChatResult struct {
 	RunID       string
 	Status      string
+	SessionID   string
 	FinalOutput *string
 	ToolCalls   []ToolCall
 	Usage       *Usage
 	Error       *AgentError
 	Events      []SessionEvent
-	Normalized  []toolmatch.Call
 	Evidence    []evidence.Record
 }
 
@@ -182,11 +180,10 @@ func (client *SSEClient) Chat(ctx context.Context, request ChatRequest, onEvent 
 	if state.pendingCalls() != 0 {
 		return ChatResult{}, fmt.Errorf("%w: terminal event has unresolved Tool calls", ErrSSEContract)
 	}
-	normalized, records, err := normalizeToolCalls(state.result.ToolCalls)
+	records, err := normalizeToolCalls(state.result.ToolCalls)
 	if err != nil {
 		return ChatResult{}, fmt.Errorf("normalize Target Tool calls: %w", err)
 	}
-	state.result.Normalized = normalized
 	state.result.Evidence = records
 	return state.result, nil
 }
@@ -411,6 +408,7 @@ func (state *sseState) acceptToolResult(raw json.RawMessage) error {
 func (state *sseState) acceptCompleted(raw json.RawMessage) error {
 	var event struct {
 		Status      string `json:"status"`
+		SessionID   string `json:"session_id"`
 		FinalOutput string `json:"final_output"`
 		Usage       *Usage `json:"usage"`
 	}
@@ -423,8 +421,12 @@ func (state *sseState) acceptCompleted(raw json.RawMessage) error {
 	if state.output.Len() > 0 && state.output.String() != event.FinalOutput {
 		return fmt.Errorf("%w: output deltas do not match final_output", ErrSSEContract)
 	}
+	if strings.TrimSpace(event.SessionID) == "" {
+		return fmt.Errorf("%w: completion requires a session_id", ErrSSEContract)
+	}
 	output := event.FinalOutput
 	state.result.Status = event.Status
+	state.result.SessionID = event.SessionID
 	state.result.FinalOutput = &output
 	state.result.Usage = event.Usage
 	state.terminal = true

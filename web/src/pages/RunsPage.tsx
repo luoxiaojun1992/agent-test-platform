@@ -31,7 +31,6 @@ export function RunsPage({ token }: { token: string }) {
             { key: 'id', title: '运行 ID', render: (run) => <Link to={`/runs/${run.id}`}><Mono>{shortID(run.id)}</Mono></Link> },
             { key: 'status', title: '状态', render: (run) => <Badge value={run.status} /> },
             { key: 'outcome', title: '执行结果', render: (run) => (run.execution_outcome ? <Badge value={run.execution_outcome} /> : <span className="muted">—</span>) },
-            { key: 'det', title: '确定性得分', render: (run) => <Score value={run.deterministic_score} /> },
             { key: 'final', title: '最终得分', render: (run) => <Score value={run.final_score} /> },
             { key: 'pass', title: '结论', render: (run) => <PassTag pass={run.pass} /> },
             { key: 'agent', title: 'Agent', render: (run) => <Mono>{shortID(run.agent_id)}</Mono> },

@@ -35,8 +35,8 @@ func TestDiscoverTools(t *testing.T) {
 		t.Fatal(err)
 	}
 	d, _ = NewDiscovery(fakeResolver{}, fakeFetcher{})
-	if _, err := d.DiscoverTools(context.Background(), in); !errors.Is(err, ErrDiscoveryFailed) {
-		t.Fatal("empty catalog must fail", err)
+	if _, err := d.DiscoverTools(context.Background(), in); err != nil {
+		t.Fatal("an empty catalog is allowed", err)
 	}
 	if _, err := d.DiscoverTools(context.Background(), DiscoveryInput{}); !IsInvalidInput(err) {
 		t.Fatal(err)

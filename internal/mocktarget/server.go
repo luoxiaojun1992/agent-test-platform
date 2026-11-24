@@ -31,6 +31,7 @@ type Server struct {
 	mu        sync.RWMutex
 	documents map[string]document
 	requests  map[string]string
+	sessions  map[string][]agent.SessionContextItem
 }
 
 type document struct {
@@ -47,12 +48,13 @@ func NewServer(config Config, validator *contracts.Validator) (*Server, error) {
 	if strings.TrimSpace(config.BearerToken) == "" || strings.TrimSpace(config.ModelID) == "" || config.IndexDelay < 0 || config.IndexDelay > time.Minute || validator == nil {
 		return nil, fmt.Errorf("Mock Target token, model, index delay, and validator are required")
 	}
-	server := &Server{config: config, validator: validator, mux: http.NewServeMux(), documents: make(map[string]document), requests: make(map[string]string)}
+	server := &Server{config: config, validator: validator, mux: http.NewServeMux(), documents: make(map[string]document), requests: make(map[string]string), sessions: make(map[string][]agent.SessionContextItem)}
 	server.mux.HandleFunc("GET /healthz", server.health)
 	server.mux.Handle("GET /v1/models", server.authenticate(http.HandlerFunc(server.listModels)))
 	server.mux.Handle("GET /v1/tools", server.authenticate(http.HandlerFunc(server.listTools)))
 	server.mux.Handle("POST /v1/knowledge/documents", server.authenticate(http.HandlerFunc(server.uploadKnowledge)))
 	server.mux.Handle("GET /v1/knowledge/documents/{documentId}", server.authenticate(http.HandlerFunc(server.getKnowledgeStatus)))
+	server.mux.Handle("GET /v1/sessions/{sessionId}/context", server.authenticate(http.HandlerFunc(server.getSessionContext)))
 	server.mux.Handle("POST /v1/chat", server.authenticate(http.HandlerFunc(server.chat)))
 	return server, nil
 }
@@ -237,25 +239,49 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 	sequence := 1
 	server.writeSSE(writer, flusher, input.RunID, sequence, "response.created", nil)
 	sequence++
-	if input.Tools != nil && len(*input.Tools) > 0 {
-		tool := (*input.Tools)[0]
-		server.writeSSE(writer, flusher, input.RunID, sequence, "response.tool_call", map[string]any{
-			"tool_sequence": 1, "call_id": "mock-target-call-1", "parent_call_id": nil,
-			"tool_name": tool.Name, "arguments": map[string]any{"input": input.Message.Content},
-		})
-		sequence++
-		server.writeSSE(writer, flusher, input.RunID, sequence, "response.tool_result", map[string]any{
-			"tool_sequence": 1, "call_id": "mock-target-call-1", "duration_ms": 1,
-			"result": map[string]any{"status": "SUCCESS", "output": map[string]any{"mock": true}, "truncated": false},
-		})
-		sequence++
-	}
+	sessionID := "sess-" + strings.ToLower(input.RunID)
+	now := time.Now().UTC()
+	server.writeSSE(writer, flusher, input.RunID, sequence, "response.tool_call", map[string]any{
+		"tool_sequence": 1, "call_id": "mock-target-call-1", "parent_call_id": nil,
+		"tool_name": "sql_executor", "arguments": map[string]any{"query": "SELECT status FROM orders WHERE id = 'O2'"},
+	})
+	sequence++
+	server.writeSSE(writer, flusher, input.RunID, sequence, "response.tool_result", map[string]any{
+		"tool_sequence": 1, "call_id": "mock-target-call-1", "duration_ms": 1,
+		"result": map[string]any{"status": "SUCCESS", "output": map[string]any{"status": "PAID"}, "truncated": false},
+	})
+	sequence++
 	finalOutput := "Mock response from " + input.Model + ": " + input.Message.Content
 	server.writeSSE(writer, flusher, input.RunID, sequence, "response.output_text.delta", map[string]any{"delta": finalOutput})
 	sequence++
 	server.writeSSE(writer, flusher, input.RunID, sequence, "response.completed", map[string]any{
-		"status": "COMPLETED", "final_output": finalOutput,
+		"status": "COMPLETED", "session_id": sessionID, "final_output": finalOutput,
 		"usage": map[string]int{"input_tokens": 32, "output_tokens": 16},
+	})
+	server.mu.Lock()
+	server.sessions[sessionID] = []agent.SessionContextItem{
+		{Sequence: 1, Type: "MESSAGE", Role: "user", Content: input.Message.Content, CreatedAt: now},
+		{Sequence: 2, Type: "TOOL_CALL", ToolName: "sql_executor", Arguments: json.RawMessage(`{"query":"SELECT status FROM orders WHERE id = 'O2'"}`), CreatedAt: now},
+		{Sequence: 3, Type: "TOOL_RESULT", ToolName: "sql_executor", Status: "SUCCESS", Result: json.RawMessage(`{"status":"PAID"}`), CreatedAt: now},
+		{Sequence: 4, Type: "MESSAGE", Role: "assistant", Content: finalOutput, CreatedAt: now},
+	}
+	server.mu.Unlock()
+}
+
+func (server *Server) getSessionContext(writer http.ResponseWriter, request *http.Request) {
+	sessionID := request.PathValue("sessionId")
+	server.mu.RLock()
+	items, exists := server.sessions[sessionID]
+	server.mu.RUnlock()
+	if !exists {
+		writeError(writer, http.StatusNotFound, "SESSION_NOT_FOUND", "session was not found", false)
+		return
+	}
+	if items == nil {
+		items = []agent.SessionContextItem{}
+	}
+	writeJSON(writer, http.StatusOK, map[string]any{
+		"schema_version": "1.0", "session_id": sessionID, "items": items, "next_cursor": nil,
 	})
 }
 

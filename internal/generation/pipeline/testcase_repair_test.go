@@ -3,13 +3,10 @@ package pipeline
 import (
 	"context"
 	"encoding/json"
-	"regexp"
 	"testing"
 
 	"agent-test-platform/internal/generation"
 	"agent-test-platform/internal/llm"
-
-	"github.com/DATA-DOG/go-sqlmock"
 )
 
 func seedManifest(t *testing.T, store *fakeTestCaseStore, round int, manifest testCaseManifest) {
@@ -97,7 +94,6 @@ func TestRepairTestCasesGeneratesReplacementAndAdvancesManifest(t *testing.T) {
 			{Code: "SCHEMA_INVALID", Path: "$.prompt", Message: "prompt too short", Retryable: true},
 		}}},
 	})
-	mock.ExpectQuery(regexp.QuoteMeta("select `status` from orders where id = 'O10001'")).WillReturnRows(sqlmock.NewRows([]string{"status"}).AddRow("PAID"))
 
 	replacement := candidateFixture(t, "reject-shipped-order")
 	var replacementDocument map[string]any

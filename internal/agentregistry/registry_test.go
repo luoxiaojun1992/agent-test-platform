@@ -35,7 +35,7 @@ func (noSecrets) Exists(context.Context, string) (bool, error) { return true, ni
 func validInput(name string) AgentInput {
 	return AgentInput{
 		Name: name, ChatEndpoint: "https://a/chat", TargetBearerTokenRef: "tok",
-		TargetModel: "m", ContractVersion: ContractVersion, ToolEvaluationMode: ModeSessionLLMOnly,
+		TargetModel: "m", ContractVersion: ContractVersion,
 	}
 }
 
@@ -81,7 +81,7 @@ func TestAgentValidation(t *testing.T) {
 	if err := valid.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	valid.ToolEvaluationMode = ModeDeterministicChain
+	valid.TargetModel = ""
 	if err := valid.Validate(); !IsInvalidInput(err) {
 		t.Fatalf("err = %v", err)
 	}

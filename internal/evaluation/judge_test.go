@@ -71,23 +71,6 @@ func TestJudgeRejectsMissingOrUnknownCriterion(t *testing.T) {
 	}
 }
 
-func TestAggregateHardGateCannotBeOverridden(t *testing.T) {
-	t.Parallel()
-
-	criteria := []Criterion{{Name: "correctness", Description: "Correct.", Weight: 1}}
-	result := JudgeResult{Criteria: []CriterionResult{{CriterionID: "correctness", Score: 100, Reason: "Perfect."}}}
-	verdict, err := Aggregate([]DeterministicCheck{
-		{ID: "state", Category: "STATE", Critical: true, Weight: 0.5, Pass: false},
-		{ID: "tool", Category: "TOOL", Critical: false, Weight: 0.5, Pass: true},
-	}, criteria, result, 70, 70)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if verdict.Pass || verdict.CriticalPass || verdict.LLMScore != 100 || verdict.FinalScore != 80 {
-		t.Fatalf("hard gate verdict = %#v", verdict)
-	}
-}
-
 func TestAggregateScoresAndThresholds(t *testing.T) {
 	t.Parallel()
 
@@ -99,11 +82,11 @@ func TestAggregateScoresAndThresholds(t *testing.T) {
 		{CriterionID: "complete", Score: 80, Reason: "Mostly complete."},
 		{CriterionID: "correctness", Score: 90, Reason: "Correct."},
 	}}
-	verdict, err := Aggregate([]DeterministicCheck{{ID: "state", Weight: 1, Pass: true, Critical: true}}, criteria, result, 70, 70)
+	verdict, err := Aggregate(criteria, result, 70)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !verdict.Pass || verdict.LLMScore != 86 || verdict.FinalScore != 91.6 {
+	if !verdict.Pass || verdict.LLMScore != 86 || verdict.FinalScore != 86 {
 		t.Fatalf("verdict = %#v", verdict)
 	}
 }
@@ -111,9 +94,6 @@ func TestAggregateScoresAndThresholds(t *testing.T) {
 func TestAggregateRejectsInvalidWeightsAndCriteria(t *testing.T) {
 	t.Parallel()
 
-	if _, err := Aggregate([]DeterministicCheck{{ID: "a", Weight: 0.9, Pass: true}}, []Criterion{{Name: "x", Description: "X", Weight: 1}}, JudgeResult{Criteria: []CriterionResult{{CriterionID: "x", Score: 1, Reason: "x"}}}, 70, 70); err == nil {
-		t.Fatal("invalid deterministic weights passed")
-	}
 	if err := validateCriteria([]Criterion{{Name: "x", Description: "X", Weight: 0.5}}); err == nil {
 		t.Fatal("invalid Judge weights passed")
 	}

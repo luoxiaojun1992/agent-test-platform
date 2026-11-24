@@ -22,7 +22,6 @@ export function AgentsPage({ token }: { token: string }) {
             { key: 'desc', title: '描述', render: (agent) => agent.description || <span className="muted">—</span> },
             { key: 'ep', title: '对话端点', render: (agent) => <Mono>{agent.chat_endpoint}</Mono> },
             { key: 'model', title: '被测模型', render: (agent) => agent.target_model },
-            { key: 'mode', title: 'Tool 评估', render: (agent) => <Badge value={agent.tool_evaluation_mode === 'DETERMINISTIC_CHAIN' ? '确定性调用链' : '仅会话评测'} tone="info" /> },
             { key: 'tools', title: 'Tool 数', render: (agent) => agent.tool_catalog?.length ?? 0 },
             { key: 'db', title: '数据库', render: (agent) => (agent.database_profile_id ? <Badge value="已配置" tone="info" /> : <span className="muted">未配置</span>) },
             { key: 'created', title: '创建时间', render: (agent) => formatDate(agent.created_at) },
@@ -41,14 +40,13 @@ function CreateAgent({ token, onClose, onDone }: { token: string; onClose: () =>
   const [endpoint, setEndpoint] = useState('')
   const [tokenRef, setTokenRef] = useState('')
   const [model, setModel] = useState('')
-  const [mode, setMode] = useState<'DETERMINISTIC_CHAIN' | 'SESSION_LLM_ONLY'>('SESSION_LLM_ONLY')
   const [tools, setTools] = useState<ToolDefinition[]>([])
   const dbFilled = db.host !== '' || db.database !== '' || db.username !== '' || db.secret !== ''
   const dbReady = !dbFilled || (db.host && Number(db.port) > 0 && db.database && db.username && db.secret)
   const [oauth, setOAuth] = useState({ token_url: '', client_id: '', client_secret_ref: '' })
   const oauthFilled = oauth.token_url !== '' || oauth.client_id !== '' || oauth.client_secret_ref !== ''
   const oauthReady = !oauthFilled || (oauth.token_url !== '' && oauth.client_id !== '' && oauth.client_secret_ref !== '')
-  const discover = useMutation({ mutationFn: () => discoverTools(token, { chat_endpoint: endpoint, target_bearer_token_ref: tokenRef }), onSuccess: (result) => { setTools(result.tools); setMode('DETERMINISTIC_CHAIN') } })
+  const discover = useMutation({ mutationFn: () => discoverTools(token, { chat_endpoint: endpoint, target_bearer_token_ref: tokenRef }), onSuccess: (result) => setTools(result.tools) })
   const create = useMutation({
     mutationFn: async () => {
       const profile = dbFilled
@@ -57,13 +55,13 @@ function CreateAgent({ token, onClose, onDone }: { token: string; onClose: () =>
       return createAgent(token, {
         name, description: description || undefined, database_profile_id: profile?.id ?? null,
         chat_endpoint: endpoint, target_bearer_token_ref: tokenRef, target_model: model, contract_version: '1.0',
-        tool_evaluation_mode: mode, tool_catalog: mode === 'DETERMINISTIC_CHAIN' ? tools : null,
+        tool_catalog: tools.length > 0 ? tools : null,
         ...(oauth.token_url ? { client_id: oauth.client_id, client_secret_ref: oauth.client_secret_ref, token_url: oauth.token_url } : {}),
       })
     },
     onSuccess: onDone,
   })
-  const ready = name && endpoint && tokenRef && model && (mode === 'SESSION_LLM_ONLY' || tools.length > 0) && oauthReady
+  const ready = name && endpoint && tokenRef && model && oauthReady
   return (
     <Modal title="新建 Agent" wide onClose={onClose} footer={<>
       <button type="button" className="btn" onClick={onClose}>取消</button>
@@ -76,18 +74,14 @@ function CreateAgent({ token, onClose, onDone }: { token: string; onClose: () =>
         <Field label="Agent 地址（基础 URL）" hint="平台会请求 {地址}/v1/chat 与 {地址}/v1/tools"><input value={endpoint} onChange={(event) => setEndpoint(event.target.value)} placeholder="https://agent.example.com" aria-label="Agent 地址" /></Field>
         <Field label="Bearer Token 凭据名" hint="先在「凭据管理」中保存"><input value={tokenRef} onChange={(event) => setTokenRef(event.target.value)} aria-label="Token 凭据名" /></Field>
         <Field label="被测模型 ID"><input value={model} onChange={(event) => setModel(event.target.value)} aria-label="被测模型" /></Field>
-        <Field label="Tool 评估模式">
-          <select value={mode} onChange={(event) => setMode(event.target.value as typeof mode)} aria-label="Tool 评估模式">
-            <option value="SESSION_LLM_ONLY">仅会话评测（不评估 Tool 调用链）</option>
-            <option value="DETERMINISTIC_CHAIN">确定性调用链（需要 Tool 目录）</option>
-          </select>
-        </Field>
-        {mode === 'DETERMINISTIC_CHAIN' && (
-          <div>
+        <div className="form-item">
+          <span className="form-label">Tool 目录（可选）</span>
+          <div className="row">
             <button type="button" className="btn" disabled={!endpoint || !tokenRef || discover.isPending} onClick={() => discover.mutate()}>{discover.isPending ? '读取中…' : '从 Agent 读取 Tool 列表'}</button>
-            <p className="muted">共 {tools.length} 个 Tool{tools.length > 0 ? `：${tools.map((tool) => tool.name).join('、')}` : '（请先读取）'}</p>
+            <span className="muted">共 {tools.length} 个 Tool{tools.length > 0 ? `：${tools.map((tool) => tool.name).join('、')}` : '（留空则生成时不参考工具）'}</span>
           </div>
-        )}
+          <span className="form-hint">用于测试用例生成时参考，告诉生成模型被测 Agent 支持哪些工具</span>
+        </div>
         <fieldset className="field-group">
           <legend>OAuth 认证（可选）</legend>
           <p className="muted">被测 Agent 需要机器间认证时，填写 client credentials 参数；平台会先换 access token 再调用。留空则使用上面的静态 Bearer Token。</p>

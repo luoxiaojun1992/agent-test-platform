@@ -194,7 +194,7 @@ func TestRunLifecycleWithMockTargetAndJudgeEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	judge, _ := evaluation.NewJudge(gateway, validator, "judge-a", 2048)
-	evaluator, _ := evalworker.NewJudgeEvaluator(judge, evalworker.JudgeModel{Alias: "judge-a", Provider: "openai", Model: "mock", BaseURL: llmServer.URL, MaxTokens: 2048})
+	evaluator, _ := evalworker.NewJudgeEvaluator(judge, evalworker.JudgeModel{Alias: "judge-a", Provider: "openai", Model: "mock", BaseURL: llmServer.URL, MaxTokens: 2048}, fakeSecretResolver{}, &http.Client{}, validator)
 	router, _ := evalworker.NewRouter("judge-a", map[string]evalworker.Evaluator{"judge-a": evaluator})
 	evalWorker, err := evalworker.New(queue, runStore, router, evalworker.Config{Owner: "e2e", LeaseDuration: time.Minute, HeartbeatInterval: 20 * time.Second, PollInterval: time.Second, StageTimeout: time.Minute})
 	if err != nil {
