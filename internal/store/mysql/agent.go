@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	agentColumnsSQL = `id, name, description, database_profile_id, chat_endpoint, target_model, contract_version, tool_evaluation_mode, tool_catalog_json, created_at`
+	agentColumnsSQL = `id, name, description, database_profile_id, chat_endpoint, target_model, contract_version, tool_evaluation_mode, tool_catalog_json, client_id, token_url, created_at`
 )
 
 // AgentStore persists Agents under test in Platform MySQL.
@@ -53,9 +53,10 @@ func (store *AgentStore) InsertAgent(ctx context.Context, record agentregistry.A
 	}
 	_, err = store.database.ExecContext(ctx, `INSERT INTO agent (id, name, description, database_profile_id, chat_endpoint,
 target_bearer_token_ref, target_model, contract_version, tool_evaluation_mode, tool_catalog_json,
-config_json, config_sha256, idempotency_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+client_id, client_secret_ref, token_url, config_json, config_sha256, idempotency_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		agent.ID, agent.Name, nullableText(agent.Description), nullableProfile(agent.DatabaseProfileID), agent.ChatEndpoint,
 		agent.TargetBearerTokenRef, agent.TargetModel, agent.ContractVersion, agent.ToolEvaluationMode, catalog,
+		nullableText(agent.ClientID), nullableText(agent.ClientSecretRef), nullableText(agent.TokenURL),
 		string(config), record.ConfigSHA256, record.IdempotencyKey)
 	if isDuplicate(err) {
 		return agentregistry.Agent{}, agentregistry.ErrDuplicate
@@ -68,17 +69,19 @@ config_json, config_sha256, idempotency_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 
 
 func (store *AgentStore) FindAgentByIdempotencyKey(ctx context.Context, key string) (agentregistry.AgentRecord, error) {
 	var (
-		record  agentregistry.AgentRecord
-		agent   agentregistry.Agent
-		desc    sql.NullString
-		profile sql.NullString
-		catalog sql.NullString
-		digest  sql.NullString
+		record   agentregistry.AgentRecord
+		agent    agentregistry.Agent
+		desc     sql.NullString
+		profile  sql.NullString
+		catalog  sql.NullString
+		clientID sql.NullString
+		tokenURL sql.NullString
+		digest   sql.NullString
 	)
 	err := store.database.QueryRowContext(ctx,
 		`SELECT `+agentColumnsSQL+`, config_sha256 FROM agent WHERE idempotency_key = ?`, key).
 		Scan(&agent.ID, &agent.Name, &desc, &profile, &agent.ChatEndpoint, &agent.TargetModel, &agent.ContractVersion,
-			&agent.ToolEvaluationMode, &catalog, &agent.CreatedAt, &digest)
+			&agent.ToolEvaluationMode, &catalog, &clientID, &tokenURL, &agent.CreatedAt, &digest)
 	if errors.Is(err, sql.ErrNoRows) {
 		return record, agentregistry.ErrNotFound
 	}
@@ -94,6 +97,8 @@ func (store *AgentStore) FindAgentByIdempotencyKey(ctx context.Context, key stri
 			return record, fmt.Errorf("decode Tool Catalog: %w", err)
 		}
 	}
+	agent.ClientID = clientID.String
+	agent.TokenURL = tokenURL.String
 	return agentregistry.AgentRecord{Agent: agent, IdempotencyKey: key, ConfigSHA256: digest.String}, nil
 }
 
@@ -146,13 +151,15 @@ func (store *AgentStore) DatabaseProfileExists(ctx context.Context, id string) (
 
 func scanAgent(row interface{ Scan(...any) error }) (agentregistry.Agent, error) {
 	var (
-		agent   agentregistry.Agent
-		desc    sql.NullString
-		profile sql.NullString
-		catalog sql.NullString
+		agent    agentregistry.Agent
+		desc     sql.NullString
+		profile  sql.NullString
+		catalog  sql.NullString
+		clientID sql.NullString
+		tokenURL sql.NullString
 	)
 	if err := row.Scan(&agent.ID, &agent.Name, &desc, &profile, &agent.ChatEndpoint, &agent.TargetModel,
-		&agent.ContractVersion, &agent.ToolEvaluationMode, &catalog, &agent.CreatedAt); err != nil {
+		&agent.ContractVersion, &agent.ToolEvaluationMode, &catalog, &clientID, &tokenURL, &agent.CreatedAt); err != nil {
 		return agentregistry.Agent{}, err
 	}
 	agent.Description = desc.String
@@ -164,6 +171,8 @@ func scanAgent(row interface{ Scan(...any) error }) (agentregistry.Agent, error)
 			return agentregistry.Agent{}, fmt.Errorf("decode Tool Catalog: %w", err)
 		}
 	}
+	agent.ClientID = clientID.String
+	agent.TokenURL = tokenURL.String
 	return agent, nil
 }
 

@@ -35,9 +35,14 @@ var (
 	ErrIdempotencyConflict  = errors.New("Idempotency-Key was already used for a different request")
 	ErrDuplicate            = errors.New("run violates a unique key")
 	ErrAgentDatabaseMissing = errors.New("the Agent has no database configured; configure one on the Agent first")
+	ErrAgentBusy            = errors.New("the Agent already has a Test Run in progress")
 	ErrInvalidCursor        = errors.New("invalid list cursor")
 	ErrInvalidLimit         = errors.New("limit must be from 1 to 200")
 )
+
+// activeStatuses are the Test Run statuses that are not terminal; a Run in one of these still
+// occupies its Agent, so a second concurrent Run for the same Agent must be refused.
+var activeStatuses = map[string]bool{"QUEUED": true, "PREPARING": true, "RUNNING": true, "EVALUATING": true}
 
 var (
 	ulidPattern  = regexp.MustCompile(`^[0-9A-HJKMNP-TV-Z]{26}$`)
@@ -158,6 +163,8 @@ type Store interface {
 	TestCases(ctx context.Context, ids []string) ([]Case, error)
 	// AgentInfo reports whether the Agent exists and whether its Agent has a database configured for seed data.
 	AgentInfo(ctx context.Context, id string) (exists, hasDatabase bool, err error)
+	// AgentHasActiveRun reports whether the Agent already has a Run in a non-terminal state.
+	AgentHasActiveRun(ctx context.Context, agentID string) (bool, error)
 	FindCreation(ctx context.Context, requestKey string) (Creation, error)
 	// InsertRuns inserts every Run and its queue item in one transaction.
 	InsertRuns(ctx context.Context, agentID, requestKey, requestSHA256 string, runs []NewRun) error
@@ -175,8 +182,17 @@ type Store interface {
 	Benchmark(ctx context.Context, testCaseRevisionIDs []string) ([]BenchmarkEntry, error)
 }
 
+// AgentLocker serializes Run creation per Agent. It is the belt-and-suspenders complement to the
+// AgentHasActiveRun status check, closing the race between the check and the insert (08 section 5).
+type AgentLocker interface {
+	LockAgent(ctx context.Context, agentID string) (unlock func(), err error)
+}
+
 // Service manages Test Runs.
-type Service struct{ store Store }
+type Service struct {
+	store  Store
+	locker AgentLocker
+}
 
 // NewService returns a Service.
 func NewService(store Store) (*Service, error) {
@@ -185,6 +201,10 @@ func NewService(store Store) (*Service, error) {
 	}
 	return &Service{store: store}, nil
 }
+
+// SetAgentLocker installs an optional per-Agent distributed lock. When set, Create acquires the
+// lock before the status check so concurrent creates for the same Agent serialize.
+func (service *Service) SetAgentLocker(locker AgentLocker) { service.locker = locker }
 
 // Create queues one Run per Test Case Revision and repetition. The Agent must have a database configured: the Dataset's
 // seed data is written there before the Run.
@@ -220,6 +240,13 @@ func (service *Service) Create(ctx context.Context, key string, request Request)
 	}
 	sum := sha256.Sum256(encoded)
 	digest := hex.EncodeToString(sum[:])
+	if service.locker != nil {
+		unlock, err := service.locker.LockAgent(ctx, request.AgentID)
+		if err != nil {
+			return nil, fmt.Errorf("lock Agent: %w", err)
+		}
+		defer unlock()
+	}
 	if replay, err := service.store.FindCreation(ctx, key); err == nil {
 		if replay.RequestSHA256 != digest {
 			return nil, ErrIdempotencyConflict
@@ -249,6 +276,13 @@ func (service *Service) Create(ctx context.Context, key string, request Request)
 	}
 	if !hasDatabase {
 		return nil, ErrAgentDatabaseMissing
+	}
+	busy, err := service.store.AgentHasActiveRun(ctx, request.AgentID)
+	if err != nil {
+		return nil, err
+	}
+	if busy {
+		return nil, ErrAgentBusy
 	}
 	runs := make([]NewRun, 0, len(cases)*request.Repetitions)
 	ids := make([]string, 0, cap(runs))

@@ -169,7 +169,7 @@ test('admin console: configure, run, evaluate, re-evaluate and benchmark with mo
   await expect(page.getByRole('heading', { level: 1, name: '运行详情' })).toBeVisible()
   await expect(page.getByText('Mock response from mock-agent-v1')).toBeVisible()
   await expect(page.getByText('What is the current status of order O2?')).toBeVisible()
-  await expect(page.getByText(/Use the database named `run_/)).toBeVisible()
+  await expect(page.getByText(/Use the database named `agent_db`/)).toBeVisible()
   await shot(page, 'run-detail-result')
   await page.getByRole('tab', { name: /评测尝试/ }).click()
   const attempts = page.getByRole('table', { name: '评测尝试' })

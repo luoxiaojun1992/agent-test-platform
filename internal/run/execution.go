@@ -33,18 +33,26 @@ type Lease struct {
 
 // AgentSpec is the immutable Agent configuration needed to call the Target Agent.
 type AgentSpec struct {
-	Endpoint  string
-	TokenRef  string
-	Model     string
-	ToolMode  string
-	ToolsJSON json.RawMessage
+	Endpoint string
+	// TokenRef names a static bearer token secret. It is used only when TokenURL is empty.
+	TokenRef string
+	// ClientID, ClientSecretRef and TokenURL configure OAuth 2.0 client credentials. When TokenURL
+	// is set, the platform obtains a short-lived access token instead of using the static bearer.
+	ClientID        string
+	ClientSecretRef string
+	TokenURL        string
+	Model           string
+	ToolMode        string
+	ToolsJSON       json.RawMessage
 }
 
-// AgentDatabase is the database server of the Agent under test. The platform uses it only to write test data; its
-// credentials are never sent to the Agent.
+// AgentDatabase is the database of the Agent under test. The platform uses it only to write test data; its
+// credentials are never sent to the Agent. Database names the fixed database (schema) that receives the
+// Run's test data; a Run no longer creates its own database.
 type AgentDatabase struct {
 	Host              string
 	Port              int
+	Database          string
 	Username          string
 	PasswordSecretRef string
 	TLSMode           string

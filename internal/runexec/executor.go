@@ -124,23 +124,41 @@ func (executor *Executor) Execute(ctx context.Context, job run.Job, markRunning 
 		return run.Settlement{}, err
 	}
 	defer closeAdmin()
-	startedAt := executor.deps.Now().UTC()
-	// A previous attempt may have left its database behind; the Run database is never reused.
-	executor.dropDatabase(admin, job.RunID)
-	identifiers, err := sandbox.ProvisionRun(ctx, admin, job.RunID, schemaInfo.Statements, seedInfo.Statements)
-	if err != nil {
-		executor.dropDatabase(admin, job.RunID)
-		return run.Settlement{}, retry(fmt.Errorf("provision run database: %w", err))
-	}
-	defer executor.dropDatabase(admin, job.RunID)
 
-	database, err := admin.OpenDatabase(ctx, identifiers.Database)
+	if job.AgentDatabase == nil || job.AgentDatabase.Database == "" {
+		return run.Settlement{}, errors.New("the Agent has no fixed database configured")
+	}
+	quotedDB, err := sandbox.QuoteIdentifier(job.AgentDatabase.Database)
 	if err != nil {
-		return run.Settlement{}, retry(fmt.Errorf("open run database: %w", err))
+		return run.Settlement{}, fmt.Errorf("quote Agent database name: %w", err)
+	}
+	if _, err := admin.ExecContext(ctx, "CREATE DATABASE IF NOT EXISTS "+quotedDB+" CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci"); err != nil {
+		return run.Settlement{}, retry(fmt.Errorf("create Agent database: %w", err))
+	}
+	database, err := admin.OpenDatabase(ctx, job.AgentDatabase.Database)
+	if err != nil {
+		return run.Settlement{}, retry(fmt.Errorf("open Agent database: %w", err))
 	}
 	defer database.Close()
 
-	settlement, err := executor.runCase(ctx, job, candidate, schemaInfo.Tables, identifiers.Database, database, markRunning)
+	tableNames := make([]string, len(schemaInfo.Tables))
+	for index, table := range schemaInfo.Tables {
+		tableNames[index] = table.Name
+	}
+	startedAt := executor.deps.Now().UTC()
+	if err := sandbox.ProvisionFixedDatabase(ctx, database, tableNames, schemaInfo.Statements, seedInfo.Statements); err != nil {
+		if errors.Is(err, sandbox.ErrLeftoverTestData) {
+			return run.Settlement{Status: run.StatusInvalidData, Error: errorJSON("LEFTOVER_TEST_DATA", err.Error())}, nil
+		}
+		return run.Settlement{}, retry(fmt.Errorf("provision Agent database: %w", err))
+	}
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+		defer cancel()
+		_ = sandbox.CleanupFixedDatabase(cleanupCtx, database, tableNames)
+	}()
+
+	settlement, err := executor.runCase(ctx, job, candidate, schemaInfo.Tables, job.AgentDatabase.Database, database, markRunning)
 	if err != nil {
 		return run.Settlement{}, err
 	}
@@ -204,7 +222,7 @@ func (executor *Executor) runCase(ctx context.Context, job run.Job, candidate ge
 		return run.Settlement{}, err
 	}
 
-	token, err := executor.deps.Secrets.Resolve(ctx, job.Agent.TokenRef)
+	token, err := executor.resolveAgentToken(ctx, job)
 	if err != nil {
 		return run.Settlement{}, retry(fmt.Errorf("resolve agent token: %w", err))
 	}
@@ -212,7 +230,13 @@ func (executor *Executor) runCase(ctx context.Context, job run.Job, candidate ge
 	if err != nil {
 		return run.Settlement{}, fmt.Errorf("build agent client: %w", err)
 	}
-	request, err := buildRequest(job, candidate, databaseName, executor.deps.Now().Add(executor.deps.AgentTimeout).UTC())
+	knowledgeIDs, cleanupKnowledge, err := executor.provisionKnowledge(ctx, job.RunID, client, candidate.KnowledgeDocuments)
+	if err != nil {
+		return run.Settlement{}, retry(fmt.Errorf("provision knowledge: %w", err))
+	}
+	defer cleanupKnowledge()
+
+	request, err := buildRequest(job, candidate, databaseName, executor.deps.Now().Add(executor.deps.AgentTimeout).UTC(), knowledgeIDs)
 	if err != nil {
 		return run.Settlement{}, err
 	}
@@ -326,7 +350,59 @@ func (executor *Executor) watchCancel(ctx context.Context, runID string, cancelA
 	}
 }
 
-func buildRequest(job run.Job, candidate generation.Candidate, databaseName string, deadline time.Time) (agent.ChatRequest, error) {
+// resolveAgentToken returns the bearer token for calling the Target: a client-credentials access
+// token when OAuth is configured, otherwise the static bearer secret.
+func (executor *Executor) resolveAgentToken(ctx context.Context, job run.Job) (string, error) {
+	if job.Agent.TokenURL != "" {
+		secret, err := executor.deps.Secrets.Resolve(ctx, job.Agent.ClientSecretRef)
+		if err != nil {
+			return "", fmt.Errorf("resolve agent client secret: %w", err)
+		}
+		return agent.FetchClientCredentialsToken(ctx, executor.deps.HTTP, job.Agent.TokenURL, job.Agent.ClientID, secret)
+	}
+	return executor.deps.Secrets.Resolve(ctx, job.Agent.TokenRef)
+}
+
+// provisionKnowledge uploads the Test Case's knowledge documents to the Target and waits for each
+// to be READY (08 section 3). It returns the document IDs in order and a teardown func that deletes
+// them. Knowledge is part of the test data and lives inside the Run lifecycle.
+func (executor *Executor) provisionKnowledge(ctx context.Context, runID string, client *agent.SSEClient, documents []generation.KnowledgeDocument) ([]string, func(), error) {
+	if len(documents) == 0 {
+		return []string{}, func() {}, nil
+	}
+	now := executor.deps.Now().UTC()
+	ids := make([]string, 0, len(documents))
+	for index, document := range documents {
+		request := agent.KnowledgeUploadRequest{
+			SchemaVersion:    "1.0",
+			RequestID:        fmt.Sprintf("%s-knowledge-%d", runID, index),
+			Name:             document.Name,
+			Text:             document.Text,
+			ContentSHA256:    document.ContentSHA256,
+			IndexingDeadline: now.Add(10 * time.Minute),
+			ExpiresAt:        now.Add(24 * time.Hour),
+			Metadata:         document.Metadata,
+		}
+		accepted, err := client.UploadKnowledge(ctx, request)
+		if err != nil {
+			return nil, func() {}, fmt.Errorf("upload knowledge %q: %w", document.Name, err)
+		}
+		if _, err := client.WaitKnowledgeReady(ctx, accepted.DocumentID, document.ContentSHA256); err != nil {
+			return nil, func() {}, fmt.Errorf("wait knowledge %q ready: %w", document.Name, err)
+		}
+		ids = append(ids, accepted.DocumentID)
+	}
+	cleanup := func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+		defer cancel()
+		for _, id := range ids {
+			_ = client.DeleteKnowledge(cleanupCtx, id)
+		}
+	}
+	return ids, cleanup, nil
+}
+
+func buildRequest(job run.Job, candidate generation.Candidate, databaseName string, deadline time.Time, knowledgeDocumentIDs []string) (agent.ChatRequest, error) {
 	mode := candidate.AgentMode
 	if mode != "ANSWER" && mode != "TASK" {
 		return agent.ChatRequest{}, fmt.Errorf("unsupported agent mode %q", mode)
@@ -340,12 +416,15 @@ func buildRequest(job run.Job, candidate generation.Candidate, databaseName stri
 		tools = &parsed
 	}
 	content := job.Prompt + "\n\nUse the database named `" + databaseName + "` for all data access."
+	if knowledgeDocumentIDs == nil {
+		knowledgeDocumentIDs = []string{}
+	}
 	return agent.ChatRequest{
 		SchemaVersion: "1.0", RunID: job.RunID, Model: job.Agent.Model, Mode: mode,
 		Message:              agent.ChatMessage{ID: "msg-" + job.RunID, Role: "user", Content: content},
 		Deadline:             deadline,
 		Tools:                tools,
-		KnowledgeDocumentIDs: []string{},
+		KnowledgeDocumentIDs: knowledgeDocumentIDs,
 	}, nil
 }
 

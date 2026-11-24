@@ -3,13 +3,15 @@ import { request } from './api'
 export interface Agent {
   id: string; name: string; description?: string; database_profile_id: string | null
   chat_endpoint: string; target_model: string; contract_version: string
-  tool_evaluation_mode: 'DETERMINISTIC_CHAIN' | 'SESSION_LLM_ONLY'; tool_catalog: ToolDefinition[] | null; created_at: string
+  tool_evaluation_mode: 'DETERMINISTIC_CHAIN' | 'SESSION_LLM_ONLY'; tool_catalog: ToolDefinition[] | null
+  client_id?: string; token_url?: string; created_at: string
 }
 export interface ToolDefinition { name: string; description: string; input_schema: unknown }
 export interface AgentInput {
   name: string; description?: string; database_profile_id?: string | null
   chat_endpoint: string; target_bearer_token_ref: string; target_model: string; contract_version: '1.0'
   tool_evaluation_mode: 'DETERMINISTIC_CHAIN' | 'SESSION_LLM_ONLY'; tool_catalog: ToolDefinition[] | null
+  client_id?: string; client_secret_ref?: string; token_url?: string
 }
 export interface TestRun {
   id: string; status: string; execution_outcome?: string; test_case_revision_id: string; dataset_revision_id: string; agent_id: string

@@ -1141,6 +1141,16 @@ components:
           type: string
           minLength: 1
           maxLength: 512
+        client_id:
+          type: string
+          maxLength: 255
+        client_secret_ref:
+          type: string
+          maxLength: 512
+        token_url:
+          type: string
+          format: uri
+          maxLength: 2048
         target_model:
           type: string
           minLength: 1

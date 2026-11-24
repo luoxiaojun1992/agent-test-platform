@@ -120,6 +120,18 @@ func (store *RunStore) AgentInfo(ctx context.Context, id string) (bool, bool, er
 	return true, profile.Valid, nil
 }
 
+func (store *RunStore) AgentHasActiveRun(ctx context.Context, agentID string) (bool, error) {
+	var found int
+	err := store.database.QueryRowContext(ctx, `SELECT 1 FROM test_run WHERE agent_id = ? AND status IN ('QUEUED','PREPARING','RUNNING','EVALUATING') LIMIT 1`, agentID).Scan(&found)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("check Agent active Run: %w", err)
+	}
+	return true, nil
+}
+
 func (store *RunStore) FindCreation(ctx context.Context, requestKey string) (run.Creation, error) {
 	rows, err := store.database.QueryContext(ctx, `SELECT id, request_sha256 FROM test_run WHERE request_key = ? ORDER BY id`, requestKey)
 	if err != nil {

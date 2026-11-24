@@ -33,6 +33,11 @@ API Bearer Token, OpenAI API key, optional Ollama token, and run-scoped database
 The resolved target token is used only in the outbound `Authorization` header and is never stored
 in Run evidence or logs.
 
+A Target may instead require machine-to-machine OAuth 2.0 client credentials (08 section 4). The
+platform then obtains a short-lived access token from the configured `token_url` using `client_id`
+and `client_secret` before calling any Target endpoint. The token URL, client id, and client secret
+reference are configured on the Target Agent configuration page.
+
 A successful target responds with HTTP `200` and `Content-Type: text/event-stream`. Authentication,
 contract, and pre-execution errors use a non-2xx JSON error response. Once HTTP `200` has begun,
 errors are terminal `response.error` events.
@@ -82,6 +87,14 @@ Authorization: Bearer <target platform token>
 X-ATP-Contract-Version: 1.0
 Accept: application/json
 ```
+
+```http
+DELETE {target_base_url}/v1/knowledge/documents/{documentId}
+Authorization: Bearer <target platform token>
+X-ATP-Contract-Version: 1.0
+```
+
+Success is `204 No Content`. The platform calls DELETE during Run teardown (08 section 3).
 
 Statuses are `QUEUED`, `INDEXING`, `READY`, and `FAILED`. The platform waits at most 10 minutes and
 never beyond the request `indexing_deadline`; polling uses `Retry-After` when it is 1-60 seconds,

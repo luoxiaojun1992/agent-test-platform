@@ -67,6 +67,12 @@ jobs:
       - name: Run Playwright tests
         run: npx playwright test
         working-directory: web
+      - name: Dump service logs on failure
+        if: failure()
+        run: |
+          echo "===== api.log ====="; cat .e2e/api.log 2>/dev/null || true
+          echo "===== worker.log ====="; cat .e2e/worker.log 2>/dev/null || true
+          echo "===== mock-target.log ====="; cat .e2e/mock-target.log 2>/dev/null || true
       - name: Tear down the E2E stack
         run: bash ./web/e2e/stack.sh down
         if: always()

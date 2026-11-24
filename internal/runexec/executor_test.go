@@ -39,14 +39,14 @@ func TestCapOutput(t *testing.T) {
 
 func TestBuildRequestPromptNamesDatabase(t *testing.T) {
 	job := run.Job{RunID: "run1", Prompt: "do it", Agent: run.AgentSpec{Model: "m", ToolsJSON: []byte(`[{"name":"q","description":"d","input_schema":{"type":"object"}}]`)}}
-	request, err := buildRequest(job, generation.Candidate{AgentMode: "TASK"}, "atp_run_x", time.Now())
+	request, err := buildRequest(job, generation.Candidate{AgentMode: "TASK"}, "atp_run_x", time.Now(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(request.Message.Content, "`atp_run_x`") || request.Tools == nil || len(*request.Tools) != 1 {
 		t.Fatalf("unexpected request %+v", request)
 	}
-	if _, err := buildRequest(job, generation.Candidate{AgentMode: "X"}, "d", time.Now()); err == nil {
+	if _, err := buildRequest(job, generation.Candidate{AgentMode: "X"}, "d", time.Now(), nil); err == nil {
 		t.Fatal("expected mode error")
 	}
 }

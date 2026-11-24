@@ -162,6 +162,20 @@ func (client *SSEClient) GetKnowledgeStatus(ctx context.Context, documentID stri
 	return status, retryAfter(header, client.timeouts.PollInterval), nil
 }
 
+// DeleteKnowledge removes one uploaded knowledge document from the Target.
+func (client *SSEClient) DeleteKnowledge(ctx context.Context, documentID string) error {
+	if strings.TrimSpace(documentID) == "" {
+		return fmt.Errorf("knowledge document ID is required")
+	}
+	requestContext, cancel := context.WithTimeout(ctx, client.timeouts.MetadataRequest)
+	defer cancel()
+	path := "/v1/knowledge/documents/" + url.PathEscape(documentID)
+	if _, _, err := client.doJSON(requestContext, http.MethodDelete, path, "", nil, http.StatusNoContent, ""); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (client *SSEClient) WaitKnowledgeReady(ctx context.Context, documentID, expectedDigest string) (KnowledgeStatus, error) {
 	waitContext, cancel := context.WithTimeout(ctx, client.timeouts.IndexWait)
 	defer cancel()
@@ -244,8 +258,10 @@ func (client *SSEClient) doJSON(ctx context.Context, method, path, idempotencyKe
 		}
 		return nil, nil, &HTTPError{StatusCode: response.StatusCode, Body: message}
 	}
-	if err := client.validator.ValidateJSON(responseSchema, responseBody); err != nil {
-		return nil, nil, fmt.Errorf("Target API response contract: %w", err)
+	if responseSchema != "" {
+		if err := client.validator.ValidateJSON(responseSchema, responseBody); err != nil {
+			return nil, nil, fmt.Errorf("Target API response contract: %w", err)
+		}
 	}
 	return responseBody, response.Header.Clone(), nil
 }

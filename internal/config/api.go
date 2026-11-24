@@ -15,6 +15,7 @@ const (
 	platformMySQLDSNEnvironment      = "PLATFORM_MYSQL_DSN"
 	apiBearerTokenEnvironment        = "API_BEARER_TOKEN"
 	generatorConfigSHA256Environment = "GENERATOR_CONFIG_SHA256"
+	redisAddrEnvironment             = "REDIS_ADDR"
 )
 
 type API struct {
@@ -22,7 +23,9 @@ type API struct {
 	PlatformMySQLDSN      string
 	BearerToken           string
 	GeneratorConfigSHA256 string
-	SecretKeyring         *secrets.Keyring
+	// RedisAddr optionally enables the per-Agent distributed lock (08 section 5). Empty disables it.
+	RedisAddr     string
+	SecretKeyring *secrets.Keyring
 }
 
 func LoadAPI() (API, error) {
@@ -69,10 +72,14 @@ func loadAPI(lookup func(string) (string, bool)) (API, error) {
 	if err != nil {
 		return API{}, err
 	}
+	redisAddr := ""
+	if value, found := lookup(redisAddrEnvironment); found {
+		redisAddr = strings.TrimSpace(value)
+	}
 
 	return API{
 		HTTPAddr: address, PlatformMySQLDSN: values[platformMySQLDSNEnvironment],
-		BearerToken: token, GeneratorConfigSHA256: digest, SecretKeyring: keyring,
+		BearerToken: token, GeneratorConfigSHA256: digest, RedisAddr: redisAddr, SecretKeyring: keyring,
 	}, nil
 }
 

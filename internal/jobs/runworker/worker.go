@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -120,6 +121,7 @@ func (worker *Worker) ProcessNext(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("claim run work: %w", err)
 	}
+	slog.Info("claimed run work item", "run_id", item.AggregateID, "work_item_id", item.ID)
 	err = worker.processClaimed(ctx, item)
 	if errors.Is(err, mysqlqueue.ErrStaleLease) || errors.Is(err, run.ErrConflict) || errors.Is(err, run.ErrNotFound) {
 		return true, nil
@@ -214,14 +216,17 @@ func (worker *Worker) processClaimed(ctx context.Context, item mysqlqueue.Item) 
 func (worker *Worker) process(ctx context.Context, runID string, lease run.Lease) error {
 	job, err := worker.store.BeginExecution(ctx, runID, lease)
 	if err != nil {
+		slog.Error("begin execution failed", "run_id", runID, "error", err)
 		return err
 	}
 	settlement, err := worker.executor.Execute(ctx, job, func(ctx context.Context) error {
 		return worker.store.MarkRunning(ctx, runID, lease)
 	})
 	if err != nil {
+		slog.Error("run execution failed", "run_id", runID, "error", err)
 		return err
 	}
+	slog.Info("run execution settled", "run_id", runID, "status", settlement.Status, "outcome", settlement.Outcome)
 	return worker.store.Settle(ctx, runID, lease, settlement)
 }
 
