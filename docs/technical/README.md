@@ -18,8 +18,10 @@ and migrations under `migrations/` are normative.
 - Optional proxy: LiteLLM may be configured later but is not required by the MVP.
 - Target interaction: one Bearer-authenticated `POST /v1/chat` SSE request; internal multi-step
 	Tool calls are allowed and no separate History API is required.
-- Tool evidence: structured Agent-returned records, with optional gateway verification.
-- Evaluation: deterministic hard gates plus a mandatory LLM Judge.
+- Tool evidence: the judge reads the Target's authoritative session context through a paginated
+	context API after the session ends; SSE is the real-time display path only (technical/09).
+- Evaluation: a single LLM Judge over the session context and Tool calls; no evaluation modes,
+	deterministic gates, or tool-chain matching (technical/09).
 
 ## Specifications
 
@@ -31,6 +33,7 @@ and migrations under `migrations/` are normative.
 6. [Sandbox and security](06-sandbox-and-security.md)
 7. [Target platform SSE contract](07-target-sse-contract.md)
 8. [Run data lifecycle, target auth, and concurrency](08-run-data-lifecycle-and-target-auth.md)
+9. [Simplified judge and session context API](09-simplified-judge-and-context-api.md)
 
 ## Normative Contracts
 
