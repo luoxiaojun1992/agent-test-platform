@@ -74,13 +74,13 @@ function CreateAgent({ token, onClose, onDone }: { token: string; onClose: () =>
         <Field label="Agent 地址（基础 URL）" hint="平台会请求 {地址}/v1/chat 与 {地址}/v1/tools"><input value={endpoint} onChange={(event) => setEndpoint(event.target.value)} placeholder="https://agent.example.com" aria-label="Agent 地址" /></Field>
         <Field label="Bearer Token 凭据名" hint="先在「凭据管理」中保存"><input value={tokenRef} onChange={(event) => setTokenRef(event.target.value)} aria-label="Token 凭据名" /></Field>
         <Field label="被测模型 ID"><input value={model} onChange={(event) => setModel(event.target.value)} aria-label="被测模型" /></Field>
-        <div>
-          <Field label="Tool 目录（可选）" hint="用于测试用例生成时参考，告诉生成模型被测 Agent 支持哪些工具">
-            <div className="row">
-              <button type="button" className="btn" disabled={!endpoint || !tokenRef || discover.isPending} onClick={() => discover.mutate()}>{discover.isPending ? '读取中…' : '从 Agent 读取 Tool 列表'}</button>
-              <span className="muted">共 {tools.length} 个 Tool{tools.length > 0 ? `：${tools.map((tool) => tool.name).join('、')}` : '（留空则生成时不参考工具）'}</span>
-            </div>
-          </Field>
+        <div className="form-item">
+          <span className="form-label">Tool 目录（可选）</span>
+          <div className="row">
+            <button type="button" className="btn" disabled={!endpoint || !tokenRef || discover.isPending} onClick={() => discover.mutate()}>{discover.isPending ? '读取中…' : '从 Agent 读取 Tool 列表'}</button>
+            <span className="muted">共 {tools.length} 个 Tool{tools.length > 0 ? `：${tools.map((tool) => tool.name).join('、')}` : '（留空则生成时不参考工具）'}</span>
+          </div>
+          <span className="form-hint">用于测试用例生成时参考，告诉生成模型被测 Agent 支持哪些工具</span>
         </div>
         <fieldset className="field-group">
           <legend>OAuth 认证（可选）</legend>
