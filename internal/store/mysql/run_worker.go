@@ -93,7 +93,7 @@ func (store *RunStore) BeginExecution(ctx context.Context, runID string, lease r
 			JOIN agent a ON a.id = r.agent_id
 			LEFT JOIN database_profile p ON p.id = a.database_profile_id
 			WHERE r.id = ? FOR UPDATE`, runID).Scan(&status, &input, &cancelAt, &datasetID, &caseJSON, &schemaSQL, &seedSQL,
-			&endpoint, &tokenRef, &model, &toolMode, &tools, &clientID, &clientSecretRef, &tokenURL, &dbName, &dbHost, &dbPort, &dbUser, &dbSecret, &dbTLS, &dbCA)
+			&endpoint, &tokenRef, &model, &toolMode, &tools, &clientID, &clientSecretRef, &tokenURL, &dbHost, &dbPort, &dbName, &dbUser, &dbSecret, &dbTLS, &dbCA)
 		if errors.Is(err, sql.ErrNoRows) {
 			return run.ErrNotFound
 		}
