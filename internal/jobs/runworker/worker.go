@@ -216,6 +216,7 @@ func (worker *Worker) processClaimed(ctx context.Context, item mysqlqueue.Item) 
 func (worker *Worker) process(ctx context.Context, runID string, lease run.Lease) error {
 	job, err := worker.store.BeginExecution(ctx, runID, lease)
 	if err != nil {
+		slog.Error("begin execution failed", "run_id", runID, "error", err)
 		return err
 	}
 	settlement, err := worker.executor.Execute(ctx, job, func(ctx context.Context) error {
