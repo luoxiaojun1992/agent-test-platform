@@ -121,6 +121,7 @@ func (worker *Worker) ProcessNext(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("claim run work: %w", err)
 	}
+	slog.Info("claimed run work item", "run_id", item.AggregateID, "work_item_id", item.ID)
 	err = worker.processClaimed(ctx, item)
 	if errors.Is(err, mysqlqueue.ErrStaleLease) || errors.Is(err, run.ErrConflict) || errors.Is(err, run.ErrNotFound) {
 		return true, nil
