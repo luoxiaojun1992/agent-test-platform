@@ -16,12 +16,16 @@ and migrations under `migrations/` are normative.
 - LLM providers: OpenAI and Ollama through an internal provider-neutral gateway.
 - Common wire subset: non-streaming OpenAI-compatible `/v1/chat/completions`.
 - Optional proxy: LiteLLM may be configured later but is not required by the MVP.
-- Target interaction: one Bearer-authenticated `POST /v1/chat` SSE request; internal multi-step
-	Tool calls are allowed and no separate History API is required.
+- Target interaction: Bearer-authenticated `POST /v1/chat` SSE requests; internal multi-step Tool
+	calls are allowed and no separate History API is required. A Test Case may carry multiple turns
+	that continue one session via `session_id` (technical/10).
 - Tool evidence: the judge reads the Target's authoritative session context through a paginated
-	context API after the session ends; SSE is the real-time display path only (technical/09).
+	context API; SSE is the real-time display path only (technical/09). A multi-turn judge reads the
+	context from the session start up to its turn, running between turns (technical/10).
 - Evaluation: a single LLM Judge over the session context and Tool calls; no evaluation modes,
 	deterministic gates, or tool-chain matching (technical/09).
+- Run pipeline: a composable node DAG (turn and judge nodes, static and runtime-conditional edges)
+	derived from the Test Case's turns; a failing turn judge stops the pipeline (technical/10).
 
 ## Specifications
 
@@ -34,6 +38,7 @@ and migrations under `migrations/` are normative.
 7. [Target platform SSE contract](07-target-sse-contract.md)
 8. [Run data lifecycle, target auth, and concurrency](08-run-data-lifecycle-and-target-auth.md)
 9. [Simplified judge and session context API](09-simplified-judge-and-context-api.md)
+10. [Multi-turn test cases and a composable run pipeline](10-multi-turn-test-cases-and-pipeline.md)
 
 ## Normative Contracts
 
@@ -45,6 +50,7 @@ and migrations under `migrations/` are normative.
 - `contracts/schemas/target-chat-event.schema.json`: inbound SSE event envelope.
 - `contracts/schemas/judge-request.schema.json`: bounded evidence sent to the Judge.
 - `contracts/schemas/judge-result.schema.json`: LLM Judge structured result.
+- `contracts/schemas/pipeline.schema.json`: the run pipeline DAG (nodes / edges / conditions; technical/10).
 - `migrations/0001_initial.sql`: initial Platform MySQL schema.
 
 ## Change Rule
