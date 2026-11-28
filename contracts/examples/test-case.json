@@ -1,23 +1,41 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "2.0",
   "scenario_revision_id": "01K4Z6Y7X8W9V0T1S2R3Q4P5N7",
   "dataset_revision_id": "01K4Z6Y7X8W9V0T1S2R3Q4P5N8",
-  "prompt": "Please cancel order O10001.",
-  "expected_output": {
-    "type": "SEMANTIC",
-    "value": "The response confirms that order O10001 was cancelled."
-  },
-  "knowledge_documents": [],
-  "evaluation_criteria": [
-    {"name": "outcome_correctness", "description": "The outcome, tool use, and response are correct.", "weight": 1.0}
+  "turns": [
+    {
+      "turn": 1,
+      "prompt": "What is the current status of order O10001?",
+      "expected_output": {
+        "type": "SEMANTIC",
+        "value": "The response states that order O10001 is PAID."
+      },
+      "evaluation_criteria": [
+        {"name": "correct_status", "description": "Reports the correct status.", "weight": 0.6},
+        {"name": "clear_answer", "description": "Names the order and its state.", "weight": 0.4}
+      ]
+    },
+    {
+      "turn": 2,
+      "prompt": "Now cancel that same order and confirm.",
+      "expected_output": {
+        "type": "SEMANTIC",
+        "value": "The response confirms that order O10001 was cancelled."
+      },
+      "evaluation_criteria": [
+        {"name": "cancelled", "description": "Confirms cancellation.", "weight": 0.7},
+        {"name": "correct_order", "description": "Refers to the right order.", "weight": 0.3}
+      ]
+    }
   ],
+  "knowledge_documents": [],
   "difficulty": "MEDIUM",
   "difficulty_profile": {
     "data_complexity": 2,
     "reasoning_complexity": 3,
     "tool_complexity": 2,
     "ambiguity": 1,
-    "multi_step": 2,
+    "multi_step": 4,
     "state_change_complexity": 3,
     "adversarial_complexity": 1
   },

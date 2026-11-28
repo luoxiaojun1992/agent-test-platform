@@ -26,7 +26,7 @@ describe('revision helpers', () => {
   it('titles each asset kind from its content', () => {
     expect(revisionTitle('scenarios', item('S', { content: { name: 'Cancel an order' } }))).toBe('Cancel an order')
     expect(revisionTitle('datasets', item('D', { metadata: { tables: [{ name: 'orders' }, { name: 'payments' }] } }))).toBe('表：orders、payments')
-    expect(revisionTitle('test-cases', item('C', { content: { prompt: 'x'.repeat(80) } }))).toHaveLength(61)
+    expect(revisionTitle('test-cases', item('C', { content: { turns: [{ prompt: 'x'.repeat(80) }] } }))).toHaveLength(61)
   })
 
   it('only allows ACTIVE or VALIDATED revisions as generation input', () => {
@@ -39,7 +39,7 @@ describe('revision helpers', () => {
 
 describe('RevisionSelect', () => {
   it('lists the newest ten by default and searches with a debounce', async () => {
-    mocked.searchRevisions.mockResolvedValue({ items: Array.from({ length: 15 }, (_, index) => item(`R${index}`, { content: { prompt: `case ${index}` } })), next_cursor: null })
+    mocked.searchRevisions.mockResolvedValue({ items: Array.from({ length: 15 }, (_, index) => item(`R${index}`, { content: { turns: [{ prompt: `case ${index}` }] } })), next_cursor: null })
     const onChange = vi.fn()
     renderWith(<RevisionSelect token="tok" kind="test-cases" label="测试用例" multiple onChange={onChange} />)
     await userEvent.click(screen.getByLabelText('测试用例'))
@@ -132,7 +132,7 @@ describe('RunTestsDialog', () => {
   const agent = { id: 'A1', name: 'mock-agent', database_profile_id: 'DB1', chat_endpoint: 'http://x', target_model: 'm', contract_version: '1.0', tool_catalog: null, created_at: '' }
 
   it('runs the picked cases on the chosen Agent without any suite or snapshot', async () => {
-    mocked.searchRevisions.mockResolvedValue({ items: [item('CASE1', { content: { prompt: 'p1' } })], next_cursor: null })
+    mocked.searchRevisions.mockResolvedValue({ items: [item('CASE1', { content: { turns: [{ prompt: 'p1' }] } })], next_cursor: null })
     mocked.listAgents.mockResolvedValue({ items: [agent], next_cursor: null })
     mocked.createRuns.mockResolvedValue({ run_ids: ['R1'] })
     renderWith(<RunTestsDialog token="tok" onClose={vi.fn()} />)

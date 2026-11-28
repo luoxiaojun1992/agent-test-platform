@@ -47,8 +47,8 @@ export function RunTestsDialog({ token, initial, onClose }: Props) {
             {(agents.data?.items ?? []).map((agent) => <option key={agent.id} value={agent.id}>{agent.name}（{agent.target_model}）</option>)}
           </select>
         </Field>
-        <Field label="重复次数" hint="每个用例重复运行的次数（1–10）">
-          <input type="number" min={1} max={10} value={repetitions} onChange={(event) => setRepetitions(Math.min(10, Math.max(1, Number(event.target.value) || 1)))} aria-label="重复次数" />
+        <Field label="整体运行轮数" hint="每个用例的完整流程（初始化→多轮对话→评测→清理）重复运行的轮数（1–10）">
+          <input type="number" min={1} max={10} value={repetitions} onChange={(event) => setRepetitions(Math.min(10, Math.max(1, Number(event.target.value) || 1)))} aria-label="整体运行轮数" />
         </Field>
         {agent && (agent.database_profile_id
           ? <p className="muted">数据集的种子数据会写入该 Agent 配置的数据库。</p>

@@ -87,8 +87,8 @@ func TestHTTPAPIToMockJudgeEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runStore, _ := mysqlstore.NewRunStore(database)
-	runService, _ := run.NewService(runStore)
+	runStore, _ := mysqlstore.NewRunStore(database, validator)
+	runService, _ := run.NewService(runStore, validator)
 	modelStore, _ := mysqlstore.NewModelStore(database)
 	for _, alias := range []string{"judge-a", "judge-b"} {
 		if err := modelStore.Register(ctx, modelcfg.RoleJudge, alias, "openai", "mock", "http://x"); err != nil {

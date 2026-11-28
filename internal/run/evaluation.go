@@ -12,23 +12,30 @@ const (
 	DefaultJudgeAlias      = "default-judge"
 )
 
-// EvaluationJob is the persisted evidence the Judge needs for one Test Run. The judge pulls the
-// authoritative session context from the Target through the paginated context API, so only the
-// session_id and the Agent's call configuration are carried here, not the collected Tool calls.
+// EvaluationJob is the persisted evidence the Judge needs to score one turn of a Test Run. The
+// judge pulls the authoritative session context from the Target through the paginated context API
+// (bounded by UntilSequence), so only the session_id, the turn number, and the Agent's call
+// configuration are carried here.
 type EvaluationJob struct {
-	RunID       string
-	Outcome     string
-	Prompt      string
-	CaseJSON    json.RawMessage
-	FinalOutput *string
-	SessionID   string
-	Agent       AgentSpec
-	AttemptNo   int
-	JudgeAlias  string
+	RunID         string
+	NodeID        string
+	Iteration     int
+	Outcome       string
+	CaseJSON      json.RawMessage
+	PipelineJSON  json.RawMessage
+	TurnNo        int
+	TotalTurns    int
+	SessionID     string
+	UntilSequence int
+	Agent         AgentSpec
+	AttemptNo     int
+	JudgeAlias    string
 }
 
 // EvaluationResult is one completed Judge attempt.
 type EvaluationResult struct {
+	Iteration         int
+	TurnNo            int
 	Provider          string
 	Model             string
 	Alias             string

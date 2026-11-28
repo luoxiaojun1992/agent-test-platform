@@ -36,7 +36,7 @@ type fakeStore struct {
 	settleErr error
 }
 
-func (s *fakeStore) BeginExecution(context.Context, string, run.Lease) (run.Job, error) {
+func (s *fakeStore) BeginExecution(context.Context, string, run.Lease, run.NodeRef) (run.Job, error) {
 	return run.Job{}, s.beginErr
 }
 func (s *fakeStore) MarkRunning(context.Context, string, run.Lease) error {
@@ -67,8 +67,8 @@ func (e fakeExecutor) Execute(ctx context.Context, _ run.Job, markRunning func(c
 }
 
 func validItem() mysqlqueue.Item {
-	return mysqlqueue.Item{ID: "w1", QueueName: run.QueueName, AggregateType: run.AggregateType, AggregateID: "run-1", StageKey: run.StageExecute,
-		Payload: json.RawMessage(`{"test_run_id":"run-1"}`), FencingToken: 1, AttemptCount: 1, MaxAttempts: 3, LeaseOwner: "owner"}
+	return mysqlqueue.Item{ID: "w1", QueueName: run.QueueName, AggregateType: run.AggregateType, AggregateID: "run-1", StageKey: run.StageKey(1, "turn-1"),
+		Payload: json.RawMessage(`{"test_run_id":"run-1","iteration":1,"node_id":"turn-1"}`), FencingToken: 1, AttemptCount: 1, MaxAttempts: 3, LeaseOwner: "owner"}
 }
 
 func newWorker(t *testing.T, q *fakeQueue, s *fakeStore, e Executor) *Worker {
@@ -160,11 +160,11 @@ func TestInvalidWorkItemFailsTerminally(t *testing.T) {
 		t.Fatal("expected terminal queue failure")
 	}
 	item = validItem()
-	item.StageKey = "other"
+	item.Payload = json.RawMessage(`{"test_run_id":"run-1","iteration":1,"node_id":"bogus"}`)
 	queue = &fakeQueue{item: item}
 	_, _ = newWorker(t, queue, &fakeStore{}, fakeExecutor{}).ProcessNext(context.Background())
 	if !queue.failed {
-		t.Fatal("wrong stage must fail")
+		t.Fatal("unknown node_id must fail")
 	}
 }
 

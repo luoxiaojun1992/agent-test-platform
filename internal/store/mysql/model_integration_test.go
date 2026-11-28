@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"agent-test-platform/contracts"
 	"agent-test-platform/internal/modelcfg"
 	"agent-test-platform/internal/run"
 	"agent-test-platform/migrations"
@@ -79,7 +80,8 @@ func TestModelSelectionReevaluationAndCancelOnMySQL84(t *testing.T) {
 		t.Fatal("unknown alias must fail")
 	}
 
-	store, _ := NewRunStore(database)
+	validator, _ := contracts.NewValidator()
+	store, _ := NewRunStore(database, validator)
 	if ok, _ := store.JudgeAliasExists(ctx, "judge-a"); !ok {
 		t.Fatal("judge-a must exist")
 	}

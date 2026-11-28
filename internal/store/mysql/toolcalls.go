@@ -243,6 +243,20 @@ func nullableTime(value *time.Time) any {
 	return value.UTC()
 }
 
+func nullableFloat64(value *float64) any {
+	if value == nil {
+		return nil
+	}
+	return *value
+}
+
+func timeOrZero(value *time.Time) time.Time {
+	if value == nil {
+		return time.Time{}
+	}
+	return value.UTC()
+}
+
 func stringPointer(value *string) string {
 	if value == nil {
 		return ""

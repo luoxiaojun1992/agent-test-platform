@@ -15,6 +15,9 @@ import (
 	"time"
 
 	"github.com/oklog/ulid/v2"
+
+	"agent-test-platform/contracts"
+	"agent-test-platform/internal/pipeline"
 )
 
 const (
@@ -22,9 +25,10 @@ const (
 
 	QueueName     = "run"
 	AggregateType = "test_run"
-	StageExecute  = "execute"
 
-	maxRepetitions   = 10
+	// MaxRepetitions bounds pipeline.config.repetitions: how many times the whole init→…→finish
+	// sequence runs inside a single Run (technical/10 §3.1). Kept in sync with pipeline.schema.json.
+	MaxRepetitions   = 10
 	maxRunsPerCreate = 1000
 )
 
@@ -59,6 +63,8 @@ func invalid(format string, args ...any) error {
 }
 
 // Request is the body of POST /test-runs: the Test Case Revisions to run on one Agent.
+// Repetitions is how many times each case's pipeline repeats internally (pipeline.config.repetitions),
+// not how many independent Runs are created (technical/10 §8).
 type Request struct {
 	AgentID             string   `json:"agent_id"`
 	TestCaseRevisionIDs []string `json:"test_case_revision_ids"`
@@ -74,6 +80,7 @@ type Run struct {
 	DatasetRevisionID  string          `json:"dataset_revision_id"`
 	AgentID            string          `json:"agent_id"`
 	SessionID          string          `json:"session_id"`
+	TurnsTotal         int             `json:"turns_total"`
 	FinalOutput        *string         `json:"final_output"`
 	Error              json.RawMessage `json:"error"`
 	FinalScore         *float64        `json:"final_score"`
@@ -122,13 +129,17 @@ type Case struct {
 	RevisionID        string
 	Lifecycle         string
 	DatasetRevisionID string
-	Prompt            string
+	TurnCount         int
+	FirstPrompt       string
 }
 
 // NewRun is one row to insert.
 type NewRun struct {
-	ID, RowKey, TestCaseRevisionID, DatasetRevisionID, Prompt string
-	Repetition                                                int
+	ID, RowKey, TestCaseRevisionID, DatasetRevisionID string
+	Repetitions                                       int
+	TurnCount                                         int
+	FirstPrompt                                       string
+	PipelineJSON                                      []byte
 }
 
 // Creation is a stored batch of Runs.
@@ -185,16 +196,20 @@ type AgentLocker interface {
 
 // Service manages Test Runs.
 type Service struct {
-	store  Store
-	locker AgentLocker
+	store     Store
+	locker    AgentLocker
+	validator *contracts.Validator
 }
 
 // NewService returns a Service.
-func NewService(store Store) (*Service, error) {
+func NewService(store Store, validator *contracts.Validator) (*Service, error) {
 	if store == nil {
 		return nil, errors.New("run store is required")
 	}
-	return &Service{store: store}, nil
+	if validator == nil {
+		return nil, errors.New("contract validator is required")
+	}
+	return &Service{store: store, validator: validator}, nil
 }
 
 // SetAgentLocker installs an optional per-Agent distributed lock. When set, Create acquires the
@@ -223,10 +238,10 @@ func (service *Service) Create(ctx context.Context, key string, request Request)
 	if request.Repetitions == 0 {
 		request.Repetitions = 1
 	}
-	if request.Repetitions < 1 || request.Repetitions > maxRepetitions {
-		return nil, invalid("repetitions must be from 1 to %d", maxRepetitions)
+	if request.Repetitions < 1 || request.Repetitions > MaxRepetitions {
+		return nil, invalid("repetitions must be from 1 to %d", MaxRepetitions)
 	}
-	if len(request.TestCaseRevisionIDs)*request.Repetitions > maxRunsPerCreate {
+	if len(request.TestCaseRevisionIDs) > maxRunsPerCreate {
 		return nil, invalid("a request may create at most %d Runs", maxRunsPerCreate)
 	}
 	encoded, err := json.Marshal(request)
@@ -279,15 +294,21 @@ func (service *Service) Create(ctx context.Context, key string, request Request)
 	if busy {
 		return nil, ErrAgentBusy
 	}
-	runs := make([]NewRun, 0, len(cases)*request.Repetitions)
+	runs := make([]NewRun, 0, len(cases))
 	ids := make([]string, 0, cap(runs))
 	for _, item := range cases {
-		for repetition := 1; repetition <= request.Repetitions; repetition++ {
-			id := ulid.Make().String()
-			rowSum := sha256.Sum256([]byte(key + "/" + id))
-			runs = append(runs, NewRun{ID: id, RowKey: hex.EncodeToString(rowSum[:]), TestCaseRevisionID: item.RevisionID, DatasetRevisionID: item.DatasetRevisionID, Prompt: item.Prompt, Repetition: repetition})
-			ids = append(ids, id)
+		definition, err := pipeline.Derive(item.TurnCount, request.Repetitions)
+		if err != nil {
+			return nil, fmt.Errorf("derive pipeline for test case %s: %w", item.RevisionID, err)
 		}
+		pipelineJSON, err := pipeline.Marshal(service.validator, definition)
+		if err != nil {
+			return nil, fmt.Errorf("encode pipeline for test case %s: %w", item.RevisionID, err)
+		}
+		id := ulid.Make().String()
+		rowSum := sha256.Sum256([]byte(key + "/" + id))
+		runs = append(runs, NewRun{ID: id, RowKey: hex.EncodeToString(rowSum[:]), TestCaseRevisionID: item.RevisionID, DatasetRevisionID: item.DatasetRevisionID, Repetitions: request.Repetitions, TurnCount: item.TurnCount, FirstPrompt: item.FirstPrompt, PipelineJSON: pipelineJSON})
+		ids = append(ids, id)
 	}
 	err = service.store.InsertRuns(ctx, request.AgentID, key, digest, runs)
 	if err == nil {

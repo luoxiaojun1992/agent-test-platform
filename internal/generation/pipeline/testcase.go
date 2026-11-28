@@ -19,7 +19,7 @@ const (
 	testCasePromptVersion = "test-case-generator/v1"
 	// testCaseToolSchemaVersion is the create_test_case Tool schema version (schema_version in
 	// contracts/schemas/create-test-case.schema.json), recorded in the Generation Manifest.
-	testCaseToolSchemaVersion = "1.0"
+	testCaseToolSchemaVersion = "2.0"
 	scenarioIDKey             = "scenario"
 	testCaseToolName          = "create_test_case"
 )
@@ -390,13 +390,15 @@ func (processor *Processor) loadAcceptedFingerprints(ctx context.Context, jobID 
 }
 
 func buildTestCaseSystemPrompt(testCaseCtx testCaseContext) string {
-	return "You generate Test Cases for an Agent test package by calling create_test_case exactly once per " +
+	return "You generate multi-turn Test Cases for an Agent test package by calling create_test_case exactly once per " +
 		"candidate. Return only schema-conformant Tool calls; do not include hidden reasoning or chain-of-thought. " +
-		"Every call must use schema_version \"1.0\", job_id, scenario_revision_id, and dataset_revision_id exactly " +
-		"as given below. Use a unique lowercase-hyphenated client_case_id per candidate. Write a prompt that " +
-		"naturally exercises the Scenario, an expected_output describing the correct result, and evaluation_criteria " +
-		"(weights summing to 1) that judge the Agent's answer and Tool usage from its output and Tool calls. " +
-		"Mark inferred assumptions in generation_assumptions."
+		"Every call must use schema_version \"2.0\", job_id, scenario_revision_id, and dataset_revision_id exactly " +
+		"as given below. Use a unique lowercase-hyphenated client_case_id per candidate. Write a turns array of 1-16 " +
+		"conversational turns; each turn carries its own prompt that naturally exercises the Scenario, an " +
+		"expected_output describing that turn's correct result, and evaluation_criteria (weights summing to 1 per " +
+		"turn) judging that turn's answer and Tool usage. A later turn's prompt should reference the outcome expected " +
+		"in the previous turn so the turns form a coherent conversation. Mark inferred assumptions in " +
+		"generation_assumptions."
 }
 
 func buildTestCaseUserPrompt(stage generation.StageRequest, testCaseCtx testCaseContext, requested int) string {

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 	"unicode/utf8"
 
@@ -16,6 +17,7 @@ import (
 	"agent-test-platform/internal/agent"
 	"agent-test-platform/internal/evidence"
 	"agent-test-platform/internal/generation"
+	"agent-test-platform/internal/pipeline"
 	"agent-test-platform/internal/run"
 	"agent-test-platform/internal/sandbox"
 	"agent-test-platform/internal/validation"
@@ -75,10 +77,27 @@ func (err retryableFailure) Retryable() bool { return true }
 
 func retry(err error) error { return retryableFailure{err} }
 
-// Execute injects test data into the Agent's fixed database, runs the Agent, and records the session
-// for later judging. Errors it returns are infrastructure failures; Agent failures are reported
-// through the Settlement.
+// Execute runs one pipeline node (init, turn, or finish). Errors it returns are infrastructure
+// failures; Agent failures are reported through the Settlement.
 func (executor *Executor) Execute(ctx context.Context, job run.Job, markRunning func(context.Context) error) (run.Settlement, error) {
+	switch job.NodeType {
+	case pipeline.NodeTypeInit:
+		return executor.runInit(ctx, job, markRunning)
+	case pipeline.NodeTypeTurn:
+		return executor.runTurn(ctx, job, markRunning)
+	case pipeline.NodeTypeFinish:
+		return executor.runFinish(ctx, job)
+	default:
+		return run.Settlement{}, fmt.Errorf("unknown node type %q", job.NodeType)
+	}
+}
+
+// runInit provisions the test environment — the fixed database and the knowledge upload — and
+// returns the teardown handles (document IDs and table names) the finish node will tear down. If
+// the previous iteration's teardown failed, the residual handles are still in the pipeline context,
+// so init cleans them up first; when there are no handles it never wipes the database wholesale
+// (it cannot locate the test data).
+func (executor *Executor) runInit(ctx context.Context, job run.Job, markRunning func(context.Context) error) (run.Settlement, error) {
 	var candidate generation.Candidate
 	if err := json.Unmarshal(job.CaseJSON, &candidate); err != nil {
 		return run.Settlement{}, fmt.Errorf("decode test case content: %w", err)
@@ -91,6 +110,13 @@ func (executor *Executor) Execute(ctx context.Context, job run.Job, markRunning 
 	if err != nil {
 		return run.Settlement{}, fmt.Errorf("validate dataset seed: %w", err)
 	}
+	definition, err := pipeline.Parse(executor.deps.Validator, job.PipelineJSON)
+	if err != nil {
+		return run.Settlement{}, err
+	}
+	residualTables := definition.Context.DatabaseTables
+	residualKnowledge := definition.Context.KnowledgeDocumentIDs
+
 	admin, closeAdmin, err := executor.adminConnection(ctx, job)
 	if err != nil {
 		return run.Settlement{}, err
@@ -113,6 +139,13 @@ func (executor *Executor) Execute(ctx context.Context, job run.Job, markRunning 
 	}
 	defer database.Close()
 
+	// Clean up residual tables left by a failed previous teardown, if any handles remain.
+	if len(residualTables) > 0 {
+		if err := sandbox.CleanupFixedDatabase(ctx, database, residualTables); err != nil {
+			return run.Settlement{}, retry(fmt.Errorf("cleanup residual tables: %w", err))
+		}
+	}
+
 	tableNames := make([]string, len(schemaInfo.Tables))
 	for index, table := range schemaInfo.Tables {
 		tableNames[index] = table.Name
@@ -120,24 +153,34 @@ func (executor *Executor) Execute(ctx context.Context, job run.Job, markRunning 
 	startedAt := executor.deps.Now().UTC()
 	if err := sandbox.ProvisionFixedDatabase(ctx, database, tableNames, schemaInfo.Statements, seedInfo.Statements); err != nil {
 		if errors.Is(err, sandbox.ErrLeftoverTestData) {
-			return run.Settlement{Status: run.StatusInvalidData, Error: errorJSON("LEFTOVER_TEST_DATA", err.Error())}, nil
+			return run.Settlement{NodeType: pipeline.NodeTypeInit, Iteration: job.Iteration, Status: run.StatusInvalidData, Error: errorJSON("LEFTOVER_TEST_DATA", err.Error())}, nil
 		}
 		return run.Settlement{}, retry(fmt.Errorf("provision Agent database: %w", err))
 	}
-	defer func() {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
-		defer cancel()
-		_ = sandbox.CleanupFixedDatabase(cleanupCtx, database, tableNames)
-	}()
 
-	settlement, err := executor.runCase(ctx, job, candidate, job.AgentDatabase.Database, markRunning)
+	// Resolve the client once, delete any residual knowledge documents, then upload the new ones.
+	token, err := executor.resolveAgentToken(ctx, job)
 	if err != nil {
+		return run.Settlement{}, retry(fmt.Errorf("resolve agent token: %w", err))
+	}
+	client, err := agent.NewSSEClient(job.Agent.Endpoint, token, executor.deps.HTTP, executor.deps.Validator)
+	if err != nil {
+		return run.Settlement{}, fmt.Errorf("build agent client: %w", err)
+	}
+	executor.deleteKnowledgeDocuments(ctx, client, residualKnowledge)
+	knowledgeIDs, err := executor.uploadKnowledge(ctx, job.RunID, client, candidate.KnowledgeDocuments)
+	if err != nil {
+		return run.Settlement{}, retry(fmt.Errorf("provision knowledge: %w", err))
+	}
+
+	if err := markRunning(ctx); err != nil {
 		return run.Settlement{}, err
 	}
-	settlement.StartedAt = &startedAt
-	cleaned := executor.deps.Now().UTC()
-	settlement.CleanedAt = &cleaned
-	return settlement, nil
+	finished := executor.deps.Now().UTC()
+	return run.Settlement{
+		NodeType: pipeline.NodeTypeInit, Iteration: job.Iteration, Status: run.StatusCompleted, Outcome: run.OutcomeCompleted,
+		KnowledgeDocumentIDs: knowledgeIDs, DatabaseTables: tableNames, StartedAt: &startedAt, CleanedAt: &finished,
+	}, nil
 }
 
 // adminConnection connects to the Agent's own database server, which receives the seed data. Its credentials stay here and
@@ -159,9 +202,28 @@ func (executor *Executor) adminConnection(ctx context.Context, job run.Job) (san
 	return connection, func() { _ = connection.Admin.Close() }, nil
 }
 
-func (executor *Executor) runCase(ctx context.Context, job run.Job, candidate generation.Candidate, databaseName string, markRunning func(context.Context) error) (run.Settlement, error) {
+// runTurn executes one conversational turn, continuing the session and reading the knowledge IDs
+// provisioned by init from the pipeline context.
+func (executor *Executor) runTurn(ctx context.Context, job run.Job, markRunning func(context.Context) error) (run.Settlement, error) {
 	if err := markRunning(ctx); err != nil {
 		return run.Settlement{}, err
+	}
+	var candidate generation.Candidate
+	if err := json.Unmarshal(job.CaseJSON, &candidate); err != nil {
+		return run.Settlement{}, fmt.Errorf("decode test case content: %w", err)
+	}
+	if job.TurnNo < 1 || job.TurnNo > len(candidate.Turns) {
+		return run.Settlement{}, fmt.Errorf("turn %d out of range (turns=%d)", job.TurnNo, len(candidate.Turns))
+	}
+	turn := candidate.Turns[job.TurnNo-1]
+
+	definition, err := pipeline.Parse(executor.deps.Validator, job.PipelineJSON)
+	if err != nil {
+		return run.Settlement{}, err
+	}
+	knowledgeIDs := definition.Context.KnowledgeDocumentIDs
+	if knowledgeIDs == nil {
+		knowledgeIDs = []string{}
 	}
 
 	token, err := executor.resolveAgentToken(ctx, job)
@@ -172,13 +234,12 @@ func (executor *Executor) runCase(ctx context.Context, job run.Job, candidate ge
 	if err != nil {
 		return run.Settlement{}, fmt.Errorf("build agent client: %w", err)
 	}
-	knowledgeIDs, cleanupKnowledge, err := executor.provisionKnowledge(ctx, job.RunID, client, candidate.KnowledgeDocuments)
-	if err != nil {
-		return run.Settlement{}, retry(fmt.Errorf("provision knowledge: %w", err))
-	}
-	defer cleanupKnowledge()
 
-	request, err := buildRequest(job, databaseName, executor.deps.Now().Add(executor.deps.AgentTimeout).UTC(), knowledgeIDs)
+	databaseName := ""
+	if job.AgentDatabase != nil {
+		databaseName = job.AgentDatabase.Database
+	}
+	request, err := buildRequest(job, turn.Prompt, databaseName, executor.deps.Now().Add(executor.deps.AgentTimeout).UTC(), knowledgeIDs)
 	if err != nil {
 		return run.Settlement{}, err
 	}
@@ -206,7 +267,7 @@ func (executor *Executor) runCase(ctx context.Context, job run.Job, candidate ge
 	default:
 	}
 
-	settlement := run.Settlement{Status: run.StatusEvaluating, AgentFinishedAt: &finished}
+	settlement := run.Settlement{NodeType: pipeline.NodeTypeTurn, Iteration: job.Iteration, TurnNo: job.TurnNo, Status: run.StatusEvaluating, AgentFinishedAt: &finished}
 	switch {
 	case wasCancelled:
 		settlement.Outcome = run.OutcomeCancelled
@@ -237,8 +298,79 @@ func (executor *Executor) runCase(ctx context.Context, job run.Job, candidate ge
 			output, digest := capOutput(*result.FinalOutput)
 			settlement.FinalOutput, settlement.OutputSHA256 = &output, &digest
 		}
+		if result.SessionID != "" {
+			watermark, err := executor.contextWatermark(ctx, client, result.SessionID)
+			if err != nil {
+				return run.Settlement{}, retry(fmt.Errorf("read session context watermark: %w", err))
+			}
+			settlement.ContextWatermark = watermark
+		}
 	}
 	return settlement, nil
+}
+
+// runFinish tears down the test environment using the teardown handles stored in the pipeline
+// context (knowledge document IDs and database table names). Cleanup is best-effort; any error is
+// recorded on the settlement but does not change the already-computed verdict.
+func (executor *Executor) runFinish(ctx context.Context, job run.Job) (run.Settlement, error) {
+	definition, err := pipeline.Parse(executor.deps.Validator, job.PipelineJSON)
+	if err != nil {
+		return run.Settlement{}, err
+	}
+	startedAt := executor.deps.Now().UTC()
+	settlement := run.Settlement{NodeType: pipeline.NodeTypeFinish, Iteration: job.Iteration, Status: run.StatusCompleted, Outcome: run.OutcomeCompleted, StartedAt: &startedAt}
+
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+	defer cancel()
+
+	// Delete knowledge documents.
+	if len(definition.Context.KnowledgeDocumentIDs) > 0 {
+		token, err := executor.resolveAgentToken(ctx, job)
+		if err != nil {
+			settlement.Error = errorJSON("KNOWLEDGE_CLEANUP_FAILED", err.Error())
+		} else {
+			client, err := agent.NewSSEClient(job.Agent.Endpoint, token, executor.deps.HTTP, executor.deps.Validator)
+			if err != nil {
+				settlement.Error = errorJSON("KNOWLEDGE_CLEANUP_FAILED", err.Error())
+			} else {
+				executor.deleteKnowledgeDocuments(cleanupCtx, client, definition.Context.KnowledgeDocumentIDs)
+			}
+		}
+	}
+
+	// Drop the fixed-database tables.
+	if len(definition.Context.DatabaseTables) > 0 && job.AgentDatabase != nil {
+		admin, closeAdmin, err := executor.adminConnection(ctx, job)
+		if err == nil {
+			database, openErr := admin.OpenDatabase(ctx, job.AgentDatabase.Database)
+			if openErr == nil {
+				_ = sandbox.CleanupFixedDatabase(cleanupCtx, database, definition.Context.DatabaseTables)
+				_ = database.Close()
+			} else {
+				settlement.Error = errorJSON("DATABASE_CLEANUP_FAILED", openErr.Error())
+			}
+			closeAdmin()
+		} else {
+			settlement.Error = errorJSON("DATABASE_CLEANUP_FAILED", err.Error())
+		}
+	}
+
+	finished := executor.deps.Now().UTC()
+	settlement.CleanedAt = &finished
+	return settlement, nil
+}
+
+// contextWatermark returns the highest context sequence of a session, i.e. the boundary of the turn
+// that just finished. The judge uses it as until_sequence.
+func (executor *Executor) contextWatermark(ctx context.Context, client *agent.SSEClient, sessionID string) (int, error) {
+	items, err := client.ListAllSessionContext(ctx, sessionID, 0, 0)
+	if err != nil {
+		return 0, err
+	}
+	if len(items) == 0 {
+		return 0, nil
+	}
+	return items[len(items)-1].Sequence, nil
 }
 
 func (executor *Executor) watchCancel(ctx context.Context, runID string, cancelAgent context.CancelFunc, cancelled chan struct{}) {
@@ -272,12 +404,12 @@ func (executor *Executor) resolveAgentToken(ctx context.Context, job run.Job) (s
 	return executor.deps.Secrets.Resolve(ctx, job.Agent.TokenRef)
 }
 
-// provisionKnowledge uploads the Test Case's knowledge documents to the Target and waits for each
-// to be READY (08 section 3). It returns the document IDs in order and a teardown func that deletes
-// them. Knowledge is part of the test data and lives inside the Run lifecycle.
-func (executor *Executor) provisionKnowledge(ctx context.Context, runID string, client *agent.SSEClient, documents []generation.KnowledgeDocument) ([]string, func(), error) {
+// uploadKnowledge uploads the Test Case's knowledge documents to the Target and waits for each to
+// be READY (08 section 3). It returns the document IDs in order; the finish node deletes them using
+// the IDs stored in the pipeline context.
+func (executor *Executor) uploadKnowledge(ctx context.Context, runID string, client *agent.SSEClient, documents []generation.KnowledgeDocument) ([]string, error) {
 	if len(documents) == 0 {
-		return []string{}, func() {}, nil
+		return []string{}, nil
 	}
 	now := executor.deps.Now().UTC()
 	ids := make([]string, 0, len(documents))
@@ -294,31 +426,38 @@ func (executor *Executor) provisionKnowledge(ctx context.Context, runID string, 
 		}
 		accepted, err := client.UploadKnowledge(ctx, request)
 		if err != nil {
-			return nil, func() {}, fmt.Errorf("upload knowledge %q: %w", document.Name, err)
+			return nil, fmt.Errorf("upload knowledge %q: %w", document.Name, err)
 		}
 		if _, err := client.WaitKnowledgeReady(ctx, accepted.DocumentID, document.ContentSHA256); err != nil {
-			return nil, func() {}, fmt.Errorf("wait knowledge %q ready: %w", document.Name, err)
+			return nil, fmt.Errorf("wait knowledge %q ready: %w", document.Name, err)
 		}
 		ids = append(ids, accepted.DocumentID)
 	}
-	cleanup := func() {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
-		defer cancel()
-		for _, id := range ids {
-			_ = client.DeleteKnowledge(cleanupCtx, id)
-		}
-	}
-	return ids, cleanup, nil
+	return ids, nil
 }
 
-func buildRequest(job run.Job, databaseName string, deadline time.Time, knowledgeDocumentIDs []string) (agent.ChatRequest, error) {
-	content := job.Prompt + "\n\nUse the database named `" + databaseName + "` for all data access."
+// deleteKnowledgeDocuments removes knowledge documents by their IDs (best-effort, used both by
+// finish teardown and by init residual cleanup).
+func (executor *Executor) deleteKnowledgeDocuments(ctx context.Context, client *agent.SSEClient, ids []string) {
+	if len(ids) == 0 {
+		return
+	}
+	cleanupCtx, cancel := context.WithTimeout(ctx, cleanupTimeout)
+	defer cancel()
+	for _, id := range ids {
+		_ = client.DeleteKnowledge(cleanupCtx, id)
+	}
+}
+
+func buildRequest(job run.Job, prompt, databaseName string, deadline time.Time, knowledgeDocumentIDs []string) (agent.ChatRequest, error) {
+	content := prompt + "\n\nUse the database named `" + databaseName + "` for all data access."
 	if knowledgeDocumentIDs == nil {
 		knowledgeDocumentIDs = []string{}
 	}
 	return agent.ChatRequest{
 		SchemaVersion: "1.0", RunID: job.RunID, Model: job.Agent.Model,
-		Message:              agent.ChatMessage{ID: "msg-" + job.RunID, Role: "user", Content: content},
+		SessionID:            job.SessionID,
+		Message:              agent.ChatMessage{ID: "msg-" + job.RunID + "-" + strconv.Itoa(job.TurnNo), Role: "user", Content: content},
 		Deadline:             deadline,
 		KnowledgeDocumentIDs: knowledgeDocumentIDs,
 	}, nil

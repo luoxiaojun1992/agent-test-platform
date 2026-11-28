@@ -46,13 +46,20 @@ type Candidate struct {
 	ClientCaseID          string              `json:"client_case_id"`
 	ScenarioRevisionID    string              `json:"scenario_revision_id"`
 	DatasetRevisionID     string              `json:"dataset_revision_id"`
-	Prompt                string              `json:"prompt"`
-	ExpectedOutput        json.RawMessage     `json:"expected_output"`
+	Turns                 []Turn              `json:"turns"`
 	KnowledgeDocuments    []KnowledgeDocument `json:"knowledge_documents"`
-	EvaluationCriteria    []Criterion         `json:"evaluation_criteria"`
 	Difficulty            string              `json:"difficulty"`
 	DifficultyProfile     map[string]int      `json:"difficulty_profile"`
 	GenerationAssumptions []string            `json:"generation_assumptions"`
+}
+
+// Turn is one conversational turn of a Test Case: its prompt, its expected output, and its
+// evaluation criteria. Turn numbers start at 1 and strictly increase.
+type Turn struct {
+	Turn               int             `json:"turn"`
+	Prompt             string          `json:"prompt"`
+	ExpectedOutput     json.RawMessage `json:"expected_output"`
+	EvaluationCriteria []Criterion     `json:"evaluation_criteria"`
 }
 
 type KnowledgeDocument struct {
@@ -101,8 +108,8 @@ func (validator *TestCaseValidator) Validate(ctx context.Context, payload []byte
 	validateKnowledgeDocuments(candidate.KnowledgeDocuments, &result)
 
 	result.ContentDigest = digestBytes(payload)
-	result.PromptFingerprint = digestBytes([]byte(strings.ToLower(strings.TrimSpace(candidate.Prompt))))
-	result.OracleFingerprint = oracleFingerprint(*candidate)
+	result.PromptFingerprint = digestBytes(turnPromptFingerprint(*candidate))
+	result.OracleFingerprint = digestBytes(turnOracleFingerprint(*candidate))
 	if _, exists := scope.ExistingPrompts[result.PromptFingerprint]; exists {
 		result.Errors = append(result.Errors, validationFailure("DUPLICATE_CASE", "$.prompt", "prompt duplicates an accepted case", true))
 	}
@@ -135,22 +142,26 @@ func validateKnowledgeDocuments(documents []KnowledgeDocument, result *Validatio
 }
 
 func validateUniqueIDs(candidate *Candidate, result *ValidationResult) {
-	criteria := make(map[string]struct{}, len(candidate.EvaluationCriteria))
-	for index, criterion := range candidate.EvaluationCriteria {
-		if _, exists := criteria[criterion.Name]; exists {
-			result.Errors = append(result.Errors, validationFailure("EVALUATION_WEIGHT_INVALID", fmt.Sprintf("$.evaluation_criteria[%d].name", index), "criterion names must be unique", true))
+	for turnIndex, turn := range candidate.Turns {
+		criteria := make(map[string]struct{}, len(turn.EvaluationCriteria))
+		for index, criterion := range turn.EvaluationCriteria {
+			if _, exists := criteria[criterion.Name]; exists {
+				result.Errors = append(result.Errors, validationFailure("EVALUATION_WEIGHT_INVALID", fmt.Sprintf("$.turns[%d].evaluation_criteria[%d].name", turnIndex, index), "criterion names must be unique", true))
+			}
+			criteria[criterion.Name] = struct{}{}
 		}
-		criteria[criterion.Name] = struct{}{}
 	}
 }
 
 func validateWeights(candidate *Candidate, result *ValidationResult) {
-	total := 0.0
-	for _, criterion := range candidate.EvaluationCriteria {
-		total += criterion.Weight
-	}
-	if math.Abs(total-1) > 1e-6 {
-		result.Errors = append(result.Errors, validationFailure("EVALUATION_WEIGHT_INVALID", "$.evaluation_criteria", fmt.Sprintf("weights sum to %v, want 1", total), true))
+	for turnIndex, turn := range candidate.Turns {
+		total := 0.0
+		for _, criterion := range turn.EvaluationCriteria {
+			total += criterion.Weight
+		}
+		if math.Abs(total-1) > 1e-6 {
+			result.Errors = append(result.Errors, validationFailure("EVALUATION_WEIGHT_INVALID", fmt.Sprintf("$.turns[%d].evaluation_criteria", turnIndex), fmt.Sprintf("weights sum to %v, want 1", total), true))
+		}
 	}
 }
 
@@ -163,11 +174,26 @@ func digestBytes(data []byte) string {
 	return hex.EncodeToString(digest[:])
 }
 
-func oracleFingerprint(candidate Candidate) string {
-	value := struct {
-		ExpectedOutput json.RawMessage `json:"expected_output"`
-		Criteria       []Criterion     `json:"evaluation_criteria"`
-	}{candidate.ExpectedOutput, candidate.EvaluationCriteria}
-	data, _ := json.Marshal(value)
-	return digestBytes(data)
+// turnPromptFingerprint normalizes the whole turn sequence's prompts for prompt deduplication.
+func turnPromptFingerprint(candidate Candidate) []byte {
+	var builder strings.Builder
+	for _, turn := range candidate.Turns {
+		builder.WriteString(strings.ToLower(strings.TrimSpace(turn.Prompt)))
+		builder.WriteByte('\n')
+	}
+	return []byte(builder.String())
+}
+
+// turnOracleFingerprint marshals the whole turn sequence's expectations for oracle deduplication.
+func turnOracleFingerprint(candidate Candidate) []byte {
+	type oracleTurn struct {
+		ExpectedOutput     json.RawMessage `json:"expected_output"`
+		EvaluationCriteria []Criterion     `json:"evaluation_criteria"`
+	}
+	oracles := make([]oracleTurn, len(candidate.Turns))
+	for index, turn := range candidate.Turns {
+		oracles[index] = oracleTurn{ExpectedOutput: turn.ExpectedOutput, EvaluationCriteria: turn.EvaluationCriteria}
+	}
+	data, _ := json.Marshal(oracles)
+	return data
 }

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"agent-test-platform/contracts"
 )
 
 const (
@@ -27,7 +29,7 @@ type fakeStore struct {
 }
 
 func (s *fakeStore) TestCases(context.Context, []string) ([]Case, error) {
-	return []Case{{RevisionID: c1, DatasetRevisionID: "d1", Prompt: "p"}, {RevisionID: c2, DatasetRevisionID: "d1", Prompt: "q"}}, nil
+	return []Case{{RevisionID: c1, DatasetRevisionID: "d1", TurnCount: 1, FirstPrompt: "p"}, {RevisionID: c2, DatasetRevisionID: "d1", TurnCount: 1, FirstPrompt: "q"}}, nil
 }
 func (s *fakeStore) AgentInfo(context.Context, string) (bool, bool, error) {
 	return true, s.agentDB, nil
@@ -61,20 +63,24 @@ func (s *fakeStore) Benchmark(context.Context, []string) ([]BenchmarkEntry, erro
 
 func newSvc(t *testing.T, s *fakeStore) *Service {
 	t.Helper()
-	svc, err := NewService(s)
+	validator, err := contracts.NewValidator()
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc, err := NewService(s, validator)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return svc
 }
 
-func TestCreateQueuesOneRunPerCaseAndRepetition(t *testing.T) {
+func TestCreateQueuesOneRunPerCase(t *testing.T) {
 	s := &fakeStore{agentDB: true}
 	ids, err := newSvc(t, s).Create(context.Background(), "key", Request{AgentID: agentV, TestCaseRevisionIDs: both, Repetitions: 2})
-	if err != nil || len(ids) != 4 {
+	if err != nil || len(ids) != 2 {
 		t.Fatalf("ids=%v err=%v", ids, err)
 	}
-	if s.inserted[1].Repetition != 2 {
+	if s.inserted[1].Repetitions != 2 {
 		t.Fatalf("unexpected rows %+v", s.inserted)
 	}
 }
@@ -137,7 +143,7 @@ func (s *fakeStore) Reevaluate(_ context.Context, source, id, key, digest, alias
 
 func TestReevaluateCreatesNewRunAndReplays(t *testing.T) {
 	s := &fakeStore{}
-	service, _ := NewService(s)
+	service := newSvc(t, s)
 	source := "01HZZZZZZZZZZZZZZZZZZZZZZZ"
 	id, err := service.Reevaluate(context.Background(), source, "k1", "judge-b")
 	if err != nil || id == "" || id == source || s.reeval[2] != "judge-b" {
@@ -153,7 +159,7 @@ func TestReevaluateCreatesNewRunAndReplays(t *testing.T) {
 }
 
 func TestReevaluateValidatesInput(t *testing.T) {
-	service, _ := NewService(&fakeStore{reevalErr: ErrConflict})
+	service := newSvc(t, &fakeStore{reevalErr: ErrConflict})
 	if _, err := service.Reevaluate(context.Background(), "bad", "k", "a"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("err=%v", err)
 	}
@@ -170,7 +176,7 @@ func (s *fakeStore) JudgeAliasExists(context.Context, string) (bool, error) {
 }
 
 func TestReevaluateRejectsUnknownJudge(t *testing.T) {
-	service, _ := NewService(&fakeStore{unknownJudge: true})
+	service := newSvc(t, &fakeStore{unknownJudge: true})
 	if _, err := service.Reevaluate(context.Background(), "01HZZZZZZZZZZZZZZZZZZZZZZZ", "k", "nope"); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("err=%v", err)
 	}

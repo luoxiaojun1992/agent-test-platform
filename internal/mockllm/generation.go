@@ -109,17 +109,33 @@ func scriptedTestCase(messages []decodedMessage) (string, any, bool, error) {
 	index := countToolResults(messages) % mockOrderCount
 	order := "O" + strconv.Itoa(index+1)
 	candidate := map[string]any{
-		"schema_version": "1.0", "job_id": job, "client_case_id": "order-" + strings.ToLower(order),
+		"schema_version": "2.0", "job_id": job, "client_case_id": "order-" + strings.ToLower(order),
 		"scenario_revision_id": scenario, "dataset_revision_id": dataset,
-		"prompt":              "What is the current status of order " + order + "?",
-		"knowledge_documents": []any{},
-		"expected_output":     map[string]any{"type": "SEMANTIC", "value": "The response states that order " + order + " is PAID."},
-		"evaluation_criteria": []any{
-			map[string]any{"name": "outcome_correctness", "description": "The response reports the correct outcome for the order.", "weight": 0.5},
-			map[string]any{"name": "response_completeness", "description": "The response names the order and its state.", "weight": 0.5},
+		"turns": []any{
+			map[string]any{
+				"turn":   1,
+				"prompt": "What is the current status of order " + order + "?",
+				"expected_output": map[string]any{"type": "SEMANTIC",
+					"value": "The response states that order " + order + " is PAID."},
+				"evaluation_criteria": []any{
+					map[string]any{"name": "correct_status", "description": "Reports the correct status.", "weight": 0.6},
+					map[string]any{"name": "clear_answer", "description": "Names the order and its state.", "weight": 0.4},
+				},
+			},
+			map[string]any{
+				"turn":   2,
+				"prompt": "Now cancel order " + order + " and confirm.",
+				"expected_output": map[string]any{"type": "SEMANTIC",
+					"value": "The response confirms that order " + order + " was cancelled."},
+				"evaluation_criteria": []any{
+					map[string]any{"name": "cancelled", "description": "Confirms cancellation.", "weight": 0.7},
+					map[string]any{"name": "correct_order", "description": "Refers to the right order.", "weight": 0.3},
+				},
+			},
 		},
-		"difficulty": "EASY", "generation_assumptions": []any{},
-		"difficulty_profile": map[string]any{"data_complexity": 1, "reasoning_complexity": 1, "tool_complexity": 1, "ambiguity": 1, "multi_step": 1, "state_change_complexity": 1, "adversarial_complexity": 1},
+		"knowledge_documents": []any{},
+		"difficulty":          "EASY", "generation_assumptions": []any{},
+		"difficulty_profile": map[string]any{"data_complexity": 1, "reasoning_complexity": 1, "tool_complexity": 1, "ambiguity": 1, "multi_step": 4, "state_change_complexity": 2, "adversarial_complexity": 1},
 	}
 	return "create_test_case", candidate, true, nil
 }

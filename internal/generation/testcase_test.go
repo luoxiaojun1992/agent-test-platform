@@ -27,7 +27,7 @@ func TestCreateTestCaseValidatorRejectsWeightsReferencesAndDuplicates(t *testing
 	validator := newTestCaseValidator(t)
 	payload := candidateDocument(t)
 	payload["job_id"] = "OTHER-JOB"
-	criteria := payload["evaluation_criteria"].([]any)
+	criteria := payload["turns"].([]any)[0].(map[string]any)["evaluation_criteria"].([]any)
 	criteria[0].(map[string]any)["weight"] = 0.1
 	criteria[1].(map[string]any)["name"] = criteria[0].(map[string]any)["name"]
 	encoded, _ := json.Marshal(payload)

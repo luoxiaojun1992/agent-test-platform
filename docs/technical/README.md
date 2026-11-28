@@ -24,8 +24,10 @@ and migrations under `migrations/` are normative.
 	context from the session start up to its turn, running between turns (technical/10).
 - Evaluation: a single LLM Judge over the session context and Tool calls; no evaluation modes,
 	deterministic gates, or tool-chain matching (technical/09).
-- Run pipeline: a composable node DAG (turn and judge nodes, static and runtime-conditional edges)
-	derived from the Test Case's turns; a failing turn judge stops the pipeline (technical/10).
+- Run pipeline: a composable node DAG (init, turn, judge, and finish nodes with static and
+	runtime-conditional edges) derived from the Test Case's turns; init provisions the test
+	environment, finish tears it down, a failing turn judge stops the pipeline, and the whole
+	sequence may repeat within one Run (technical/10).
 
 ## Specifications
 
@@ -50,7 +52,7 @@ and migrations under `migrations/` are normative.
 - `contracts/schemas/target-chat-event.schema.json`: inbound SSE event envelope.
 - `contracts/schemas/judge-request.schema.json`: bounded evidence sent to the Judge.
 - `contracts/schemas/judge-result.schema.json`: LLM Judge structured result.
-- `contracts/schemas/pipeline.schema.json`: the run pipeline DAG (nodes / edges / conditions; technical/10).
+- `contracts/schemas/pipeline.schema.json`: the run pipeline DAG (nodes / edges / conditions / config / context / result; technical/10).
 - `migrations/0001_initial.sql`: initial Platform MySQL schema.
 
 ## Change Rule
