@@ -177,19 +177,28 @@ func (store *RunStore) BeginExecution(ctx context.Context, runID string, lease r
 	return job, nil
 }
 
-// MarkRunning moves PREPARING (or an already-RUNNING Run, idempotently) to RUNNING under the lease.
+// MarkRunning moves PREPARING to RUNNING, and is a no-op when the Run is already RUNNING (a
+// turn/finish node reuses the RUNNING state set by init). Any other status is a conflict.
 func (store *RunStore) MarkRunning(ctx context.Context, runID string, lease run.Lease) error {
 	conflict := false
 	err := store.inLeaseTx(ctx, runID, lease, func(tx *sql.Tx) error {
-		result, err := tx.ExecContext(ctx, `UPDATE test_run SET status='RUNNING' WHERE id = ? AND status IN ('PREPARING','RUNNING')`, runID)
-		if err != nil {
+		var status string
+		if err := tx.QueryRowContext(ctx, `SELECT status FROM test_run WHERE id = ? FOR UPDATE`, runID).Scan(&status); err != nil {
 			return err
 		}
-		if n, _ := result.RowsAffected(); n != 1 {
+		switch status {
+		case run.StatusRunning:
+			// Already running: idempotent no-op.
+			return nil
+		case run.StatusPreparing:
+			if _, err := tx.ExecContext(ctx, `UPDATE test_run SET status='RUNNING' WHERE id = ?`, runID); err != nil {
+				return err
+			}
+			return nil
+		default:
 			conflict = true
 			return completeRunLease(ctx, tx, lease)
 		}
-		return nil
 	})
 	if err != nil {
 		return err
