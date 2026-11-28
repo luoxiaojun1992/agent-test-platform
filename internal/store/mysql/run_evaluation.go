@@ -290,13 +290,29 @@ func (store *RunStore) Reevaluate(ctx context.Context, sourceID, newID, requestK
 	defer tx.Rollback()
 	var status string
 	var outcome sql.NullString
-	if err := tx.QueryRowContext(ctx, `SELECT status, execution_outcome FROM test_run WHERE id = ? FOR UPDATE`, sourceID).Scan(&status, &outcome); errors.Is(err, sql.ErrNoRows) {
+	var pipelineJSON []byte
+	if err := tx.QueryRowContext(ctx, `SELECT status, execution_outcome, CAST(pipeline_json AS CHAR) FROM test_run WHERE id = ? FOR UPDATE`, sourceID).
+		Scan(&status, &outcome, &pipelineJSON); errors.Is(err, sql.ErrNoRows) {
 		return run.ErrNotFound
 	} else if err != nil {
 		return fmt.Errorf("lock source Test Run: %w", err)
 	}
 	if (status != run.StatusCompleted && status != run.StatusEvaluationFailed) || !outcome.Valid {
 		return run.ErrConflict
+	}
+	// Re-derive the pipeline so the new Run starts with a fresh context (iteration 1, empty
+	// iteration_scores/result); only the turn evidence (watermarks, outputs) is copied.
+	definition, err := pipeline.Parse(store.validator, pipelineJSON)
+	if err != nil {
+		return err
+	}
+	fresh, err := pipeline.Derive(definition.TurnCount(), definition.Config.Repetitions)
+	if err != nil {
+		return err
+	}
+	freshJSON, err := pipeline.Marshal(store.validator, fresh)
+	if err != nil {
+		return err
 	}
 	rowSum := sha256.Sum256([]byte(requestKey + "/" + newID))
 	if _, err := tx.ExecContext(ctx, `INSERT INTO test_run (id, idempotency_key, request_key, request_sha256, test_case_revision_id, dataset_revision_id,
@@ -306,9 +322,9 @@ func (store *RunStore) Reevaluate(ctx context.Context, sourceID, newID, requestK
 		SELECT ?, ?, ?, ?, test_case_revision_id, dataset_revision_id, agent_id,
 			(SELECT COALESCE(MAX(x.repetition_no), 0) + 1 FROM test_run x WHERE x.agent_id = s.agent_id AND x.test_case_revision_id = s.test_case_revision_id),
 			'EVALUATING', execution_outcome, input_text, final_output, session_id,
-			pipeline_json, turns_total,
+			?, turns_total,
 			actual_output_sha256, started_at, agent_finished_at, environment_cleaned_at
-		FROM test_run s WHERE s.id = ?`, newID, hex.EncodeToString(rowSum[:]), requestKey, requestSHA256, sourceID); err != nil {
+		FROM test_run s WHERE s.id = ?`, newID, hex.EncodeToString(rowSum[:]), requestKey, requestSHA256, string(freshJSON), sourceID); err != nil {
 		if isDuplicate(err) {
 			return run.ErrDuplicate
 		}

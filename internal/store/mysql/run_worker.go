@@ -310,8 +310,8 @@ func (store *RunStore) settleTurn(ctx context.Context, runID string, lease run.L
 			if err := enqueueJudge(ctx, tx, runID, settlement.Iteration, settlement.TurnNo); err != nil {
 				return err
 			}
-			if _, err := tx.ExecContext(ctx, `UPDATE test_run SET status = 'EVALUATING', session_id = ?, final_output = ?, actual_output_sha256 = ?, agent_finished_at = ? WHERE id = ?`,
-				settlement.SessionID, settlement.FinalOutput, settlement.OutputSHA256, nullableTime(settlement.AgentFinishedAt), runID); err != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE test_run SET status = 'EVALUATING', execution_outcome = ?, session_id = ?, final_output = ?, actual_output_sha256 = ?, agent_finished_at = ? WHERE id = ?`,
+				settlement.Outcome, settlement.SessionID, settlement.FinalOutput, settlement.OutputSHA256, nullableTime(settlement.AgentFinishedAt), runID); err != nil {
 				return err
 			}
 		} else {
