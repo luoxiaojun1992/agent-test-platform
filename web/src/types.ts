@@ -109,7 +109,7 @@ export interface DatasetDraft {
 
 export interface TestCaseDraft {
   client_case_id: string
-  prompt: string
+  turns?: { prompt?: string }[]
   difficulty: string
 }
 

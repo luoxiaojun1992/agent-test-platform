@@ -154,7 +154,8 @@ func TestSchemasRejectInvalidDocuments(t *testing.T) {
 			name:        "test case criterion weight exceeds maximum",
 			examplePath: "examples/test-case.json",
 			mutate: func(document map[string]any) {
-				criteria := document["evaluation_criteria"].([]any)
+				turns := document["turns"].([]any)
+				criteria := turns[0].(map[string]any)["evaluation_criteria"].([]any)
 				criteria[0].(map[string]any)["weight"] = 1.5
 			},
 		},

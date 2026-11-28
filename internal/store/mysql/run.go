@@ -10,28 +10,34 @@ import (
 
 	"github.com/oklog/ulid/v2"
 
+	"agent-test-platform/contracts"
+	"agent-test-platform/internal/pipeline"
 	"agent-test-platform/internal/run"
 )
 
 // RunStore persists Test Runs in Platform MySQL.
-type RunStore struct{ database *sql.DB }
+type RunStore struct {
+	database  *sql.DB
+	validator *contracts.Validator
+}
 
 // NewRunStore returns a store over the Platform MySQL database.
-func NewRunStore(database *sql.DB) (*RunStore, error) {
+func NewRunStore(database *sql.DB, validator *contracts.Validator) (*RunStore, error) {
 	if database == nil {
 		return nil, errors.New("Platform MySQL database is required")
 	}
-	return &RunStore{database: database}, nil
+	if validator == nil {
+		return nil, errors.New("contract validator is required")
+	}
+	return &RunStore{database: database, validator: validator}, nil
 }
 
 const (
-	latestEvaluation = `(SELECT e.%s FROM evaluation_attempt e WHERE e.test_run_id = r.id AND e.status = 'COMPLETED' ORDER BY e.attempt_no DESC LIMIT 1)`
-
 	runColumns = `r.id, r.status, r.execution_outcome, r.test_case_revision_id, r.dataset_revision_id, r.agent_id,
-r.session_id, r.final_output, r.error_json, %s, %s, r.created_at`
+r.session_id, r.final_output, r.error_json, r.final_score, r.pass, COALESCE(r.turns_total, 0), r.created_at`
 )
 
-var selectRun = `SELECT ` + fmt.Sprintf(runColumns, fmt.Sprintf(latestEvaluation, "final_score"), fmt.Sprintf(latestEvaluation, "pass")) + ` FROM test_run r`
+var selectRun = `SELECT ` + runColumns + ` FROM test_run r`
 
 func rawJSON(value []byte) json.RawMessage {
 	if value == nil {
@@ -47,7 +53,7 @@ func scanRun(row rowScanner) (run.Run, error) {
 	var finalScore sql.NullFloat64
 	var pass sql.NullBool
 	if err := row.Scan(&item.ID, &item.Status, &outcome, &item.TestCaseRevisionID, &item.DatasetRevisionID, &item.AgentID,
-		&sessionID, &output, &errJSON, &finalScore, &pass, &item.CreatedAt); err != nil {
+		&sessionID, &output, &errJSON, &finalScore, &pass, &item.TurnsTotal, &item.CreatedAt); err != nil {
 		return item, err
 	}
 	if outcome.Valid {
@@ -76,7 +82,7 @@ func (store *RunStore) TestCases(ctx context.Context, ids []string) ([]run.Case,
 		args[i] = id
 	}
 	rows, err := store.database.QueryContext(ctx,
-		`SELECT id, dataset_revision_id, lifecycle_status, JSON_UNQUOTE(JSON_EXTRACT(content_json, '$.prompt'))
+		`SELECT id, dataset_revision_id, lifecycle_status, COALESCE(JSON_LENGTH(JSON_EXTRACT(content_json, '$.turns')), 1), JSON_UNQUOTE(JSON_EXTRACT(content_json, '$.turns[0].prompt'))
 FROM test_case_revision WHERE id IN (`+strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")+`)`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("load Test Case Revisions: %w", err)
@@ -85,11 +91,11 @@ FROM test_case_revision WHERE id IN (`+strings.TrimSuffix(strings.Repeat("?,", l
 	byID := make(map[string]run.Case, len(ids))
 	for rows.Next() {
 		var item run.Case
-		var prompt sql.NullString
-		if err := rows.Scan(&item.RevisionID, &item.DatasetRevisionID, &item.Lifecycle, &prompt); err != nil {
+		var firstPrompt sql.NullString
+		if err := rows.Scan(&item.RevisionID, &item.DatasetRevisionID, &item.Lifecycle, &item.TurnCount, &firstPrompt); err != nil {
 			return nil, fmt.Errorf("scan Test Case Revision: %w", err)
 		}
-		item.Prompt = prompt.String
+		item.FirstPrompt = firstPrompt.String
 		byID[item.RevisionID] = item
 	}
 	if err := rows.Err(); err != nil {
@@ -162,23 +168,36 @@ func (store *RunStore) InsertRuns(ctx context.Context, agentID, requestKey, requ
 	for _, item := range runs {
 		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO test_run (id, idempotency_key, request_key, request_sha256, test_case_revision_id, dataset_revision_id,
-agent_id, repetition_no, status, input_text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'QUEUED', ?)`,
+agent_id, repetition_no, status, input_text, pipeline_json, turns_total)
+VALUES (?, ?, ?, ?, ?, ?, ?, 1, 'QUEUED', ?, ?, ?)`,
 			item.ID, item.RowKey, requestKey, requestSHA256, item.TestCaseRevisionID, item.DatasetRevisionID,
-			agentID, item.Repetition, item.Prompt); err != nil {
+			agentID, item.FirstPrompt, item.PipelineJSON, item.TurnCount); err != nil {
 			if isDuplicate(err) {
 				return run.ErrDuplicate
 			}
 			return fmt.Errorf("insert Test Run: %w", err)
 		}
-		payload, err := json.Marshal(map[string]string{"test_run_id": item.ID})
+		for turn := 1; turn <= item.TurnCount; turn++ {
+			prompt := ""
+			if turn == 1 {
+				prompt = item.FirstPrompt
+			}
+			if _, err := tx.ExecContext(ctx,
+				`INSERT INTO test_run_turn (id, test_run_id, iteration, turn_no, prompt, status) VALUES (?, ?, 1, ?, ?, 'PENDING')`,
+				ulid.Make().String(), item.ID, turn, prompt); err != nil {
+				return fmt.Errorf("insert Test Run turn: %w", err)
+			}
+		}
+		// Enqueue the init node of iteration 1.
+		payload, err := json.Marshal(map[string]any{"test_run_id": item.ID, "iteration": 1, "node_id": pipeline.InitNodeID})
 		if err != nil {
 			return fmt.Errorf("encode queue payload: %w", err)
 		}
 		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO work_item (id, queue_name, aggregate_type, aggregate_id, stage_key, status, priority, available_at, fencing_token, attempt_count, max_attempts, payload_json)
 VALUES (?, ?, ?, ?, ?, 'READY', 0, UTC_TIMESTAMP(6), 0, 0, 3, ?)`,
-			ulid.Make().String(), run.QueueName, run.AggregateType, item.ID, run.StageExecute, payload); err != nil {
-			return fmt.Errorf("enqueue Test Run: %w", err)
+			ulid.Make().String(), run.QueueName, run.AggregateType, item.ID, run.StageKey(1, pipeline.InitNodeID), payload); err != nil {
+			return fmt.Errorf("enqueue init node: %w", err)
 		}
 	}
 	if err := tx.Commit(); err != nil {
@@ -376,8 +395,9 @@ func (store *RunStore) ListAllEvaluations(ctx context.Context, filter run.EvalFi
 	return items, rows.Err()
 }
 
-// Benchmark counts COMPLETED Runs that reached the Agent. The verdict is the latest COMPLETED Evaluation Attempt;
-// a critical failure is a Run with a critical deterministic check that did not pass.
+// Benchmark counts COMPLETED Runs that reached the Agent. The verdict is the Run's final
+// aggregated pass/final_score (technical/10 §3.4); a critical failure is a Run with a critical
+// deterministic check that did not pass.
 func (store *RunStore) Benchmark(ctx context.Context, caseIDs []string) ([]run.BenchmarkEntry, error) {
 	caseArgs := make([]any, len(caseIDs))
 	for i, id := range caseIDs {
@@ -385,8 +405,8 @@ func (store *RunStore) Benchmark(ctx context.Context, caseIDs []string) ([]run.B
 	}
 	rows, err := store.database.QueryContext(ctx,
 		`SELECT r.agent_id, COUNT(*),
-COALESCE(100 * AVG(CASE WHEN `+fmt.Sprintf(latestEvaluation, "pass")+` THEN 1 ELSE 0 END), 0),
-COALESCE(AVG(`+fmt.Sprintf(latestEvaluation, "final_score")+`), 0)
+COALESCE(100 * AVG(CASE WHEN r.pass THEN 1 ELSE 0 END), 0),
+COALESCE(AVG(r.final_score), 0)
 FROM test_run r
 WHERE r.test_case_revision_id IN (`+strings.TrimSuffix(strings.Repeat("?,", len(caseIDs)), ",")+`) AND r.status = 'COMPLETED' AND r.execution_outcome IS NOT NULL AND r.execution_outcome <> 'INFRA_ERROR'
 GROUP BY r.agent_id ORDER BY r.agent_id`, caseArgs...)

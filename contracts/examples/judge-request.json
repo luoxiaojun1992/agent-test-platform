@@ -41,5 +41,7 @@
   ],
   "evaluation_criteria": [
     {"name": "outcome_correctness", "description": "The outcome, tool use, and response are correct.", "weight": 1.0}
-  ]
+  ],
+  "turn": 1,
+  "total_turns": 2
 }

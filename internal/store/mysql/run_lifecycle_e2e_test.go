@@ -110,8 +110,8 @@ func TestRunLifecycleWithMockTargetAndJudgeEndToEnd(t *testing.T) {
 	exec(`INSERT INTO agent (id, name, database_profile_id, chat_endpoint, target_bearer_token_ref, target_model, contract_version, tool_evaluation_mode, config_json, config_sha256, idempotency_key)
 		VALUES ('` + agentID + `', 'mock-agent', '01HZZZZZZZZZZZZZZZZZZZZZP1', '@@ENDPOINT@@', 'tok', 'mock-agent-v1', '1.0', 'SESSION_LLM_ONLY', JSON_OBJECT(), REPEAT('d', 64), 'agent-key')`)
 
-	runStore, _ := mysqlstore.NewRunStore(database)
-	runService, _ := run.NewService(runStore)
+	runStore, _ := mysqlstore.NewRunStore(database, validator)
+	runService, _ := run.NewService(runStore, validator)
 	modelStore, _ := mysqlstore.NewModelStore(database)
 	if err := modelStore.Register(ctx, modelcfg.RoleJudge, "judge-a", "openai", "mock", "http://x"); err != nil {
 		t.Fatal(err)

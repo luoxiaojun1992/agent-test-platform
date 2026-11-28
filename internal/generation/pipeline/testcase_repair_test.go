@@ -100,7 +100,7 @@ func TestRepairTestCasesGeneratesReplacementAndAdvancesManifest(t *testing.T) {
 	if err := json.Unmarshal(replacement, &replacementDocument); err != nil {
 		t.Fatal(err)
 	}
-	replacementDocument["prompt"] = "Please cancel my most recent order, O10001, right away."
+	replacementDocument["turns"].([]any)[0].(map[string]any)["prompt"] = "Please cancel my most recent order, O10001, right away."
 	replacement, err := json.Marshal(replacementDocument)
 	if err != nil {
 		t.Fatal(err)

@@ -165,7 +165,7 @@ function TestCasesDraftView({ testCases }: { testCases: TestCaseDraft[] }) {
               <code>{testCase.client_case_id}</code>
               <span className="draft-tag">{titleCase(testCase.difficulty)}</span>
             </div>
-            <p>{testCase.prompt}</p>
+            <p>{testCase.turns?.[0]?.prompt}</p>
             <RawJSON label="Full test case JSON" value={testCase} />
           </li>
         ))}

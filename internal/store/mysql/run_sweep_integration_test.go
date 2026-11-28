@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"agent-test-platform/contracts"
 	"agent-test-platform/internal/runexec"
 	"agent-test-platform/internal/sandbox"
 	mysqlstore "agent-test-platform/internal/store/mysql"
@@ -60,7 +61,8 @@ func TestAgentDatabaseCheckAndSweepOnMySQL84(t *testing.T) {
 		VALUES ('AG', 'a', '01HZZZZZZZZZZZZZZZZZZZZZP1', 'http://x', 'tok', 'm', '1.0', 'SESSION_LLM_ONLY', JSON_OBJECT(), REPEAT('e', 64), 'ak')`); err != nil {
 		t.Fatal(err)
 	}
-	store, err := mysqlstore.NewRunStore(platform)
+	validator, _ := contracts.NewValidator()
+	store, err := mysqlstore.NewRunStore(platform, validator)
 	if err != nil {
 		t.Fatal(err)
 	}

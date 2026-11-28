@@ -16,7 +16,8 @@ export function revisionTitle(kind: AssetKind, item: RevisionItem): string {
     const tables = Array.isArray(item.metadata?.tables) ? (item.metadata?.tables as { name?: string }[]).map((table) => table.name).filter(Boolean) : []
     return tables.length > 0 ? `表：${tables.join('、')}` : '（数据集）'
   }
-  const prompt = text(item.content?.prompt)
+  const turns = Array.isArray(item.content?.turns) ? (item.content?.turns as { prompt?: unknown }[]) : []
+  const prompt = text(turns[0]?.prompt)
   return prompt.length > 60 ? `${prompt.slice(0, 60)}…` : prompt || '（测试用例）'
 }
 

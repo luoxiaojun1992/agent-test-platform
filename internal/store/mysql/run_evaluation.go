@@ -13,30 +13,37 @@ import (
 	"github.com/oklog/ulid/v2"
 
 	"agent-test-platform/internal/jobs/mysqlqueue"
+	"agent-test-platform/internal/pipeline"
 	"agent-test-platform/internal/run"
 )
 
-// BeginEvaluation loads the evidence of an EVALUATING Run. Any other status completes the lease and returns run.ErrConflict.
-func (store *RunStore) BeginEvaluation(ctx context.Context, runID string, lease run.Lease) (run.EvaluationJob, error) {
+// BeginEvaluation loads the evidence of the current turn of an EVALUATING Run. Any other status
+// completes the lease and returns run.ErrConflict.
+func (store *RunStore) BeginEvaluation(ctx context.Context, runID string, lease run.Lease, node run.NodeRef) (run.EvaluationJob, error) {
 	var job run.EvaluationJob
 	conflict := false
 	err := store.inLeaseTx(ctx, runID, lease, func(tx *sql.Tx) error {
 		var (
-			status, input, caseJSON string
-			outcome, finalOutput    sql.NullString
-			sessionID               sql.NullString
-			endpoint, tokenRef      sql.NullString
-			model                   sql.NullString
-			clientID, secretRef     sql.NullString
-			tokenURL                sql.NullString
+			status, caseJSON    string
+			outcome             sql.NullString
+			sessionID           sql.NullString
+			pipelineJSON        []byte
+			turnsTotal          int
+			watermark           int
+			endpoint, tokenRef  sql.NullString
+			model               sql.NullString
+			clientID, secretRef sql.NullString
+			tokenURL            sql.NullString
 		)
-		err := tx.QueryRowContext(ctx, `SELECT r.status, r.execution_outcome, r.input_text, r.final_output, r.session_id, CAST(tc.content_json AS CHAR),
+		err := tx.QueryRowContext(ctx, `SELECT r.status, r.execution_outcome, r.session_id, r.turns_total, CAST(r.pipeline_json AS CHAR),
+			COALESCE(t.context_watermark, 0), CAST(tc.content_json AS CHAR),
 			a.chat_endpoint, a.target_bearer_token_ref, a.target_model, a.client_id, a.client_secret_ref, a.token_url
 			FROM test_run r
 			JOIN test_case_revision tc ON tc.id = r.test_case_revision_id
 			JOIN agent a ON a.id = r.agent_id
-			WHERE r.id = ? FOR UPDATE`, runID).
-			Scan(&status, &outcome, &input, &finalOutput, &sessionID, &caseJSON,
+			LEFT JOIN test_run_turn t ON t.test_run_id = r.id AND t.iteration = ? AND t.turn_no = ?
+			WHERE r.id = ? FOR UPDATE`, node.Iteration, node.TurnNo, runID).
+			Scan(&status, &outcome, &sessionID, &turnsTotal, &pipelineJSON, &watermark, &caseJSON,
 				&endpoint, &tokenRef, &model, &clientID, &secretRef, &tokenURL)
 		if errors.Is(err, sql.ErrNoRows) {
 			return run.ErrNotFound
@@ -48,18 +55,16 @@ func (store *RunStore) BeginEvaluation(ctx context.Context, runID string, lease 
 			conflict = true
 			return completeRunLease(ctx, tx, lease)
 		}
-		attemptNo, alias, err := startAttempt(ctx, tx, runID)
+		attemptNo, alias, err := startAttempt(ctx, tx, runID, node.Iteration, node.TurnNo)
 		if err != nil {
 			return err
 		}
-		job = run.EvaluationJob{RunID: runID, Outcome: outcome.String, Prompt: input, CaseJSON: json.RawMessage(caseJSON),
-			SessionID: sessionID.String, AttemptNo: attemptNo, JudgeAlias: alias,
+		job = run.EvaluationJob{RunID: runID, NodeID: node.NodeID, Iteration: node.Iteration, Outcome: outcome.String,
+			CaseJSON: json.RawMessage(caseJSON), PipelineJSON: json.RawMessage(pipelineJSON),
+			TurnNo: node.TurnNo, TotalTurns: turnsTotal, SessionID: sessionID.String, UntilSequence: watermark,
+			AttemptNo: attemptNo, JudgeAlias: alias,
 			Agent: run.AgentSpec{Endpoint: endpoint.String, TokenRef: tokenRef.String, Model: model.String,
 				ClientID: clientID.String, ClientSecretRef: secretRef.String, TokenURL: tokenURL.String}}
-		if finalOutput.Valid {
-			text := finalOutput.String
-			job.FinalOutput = &text
-		}
 		return nil
 	})
 	if err != nil {
@@ -97,7 +102,8 @@ func ensureJudgeConfig(ctx context.Context, tx *sql.Tx, result run.EvaluationRes
 	return id, nil
 }
 
-// SettleEvaluation records the Judge attempt, completes the Run and finishes the work item.
+// SettleEvaluation records the Judge attempt for the current turn, advances the pipeline gate, and
+// either enqueues the next turn, or finish (which drives the repetition loop).
 func (store *RunStore) SettleEvaluation(ctx context.Context, runID string, lease run.Lease, attemptNo int, result run.EvaluationResult, startedAt time.Time) error {
 	conflict := false
 	err := store.inLeaseTx(ctx, runID, lease, func(tx *sql.Tx) error {
@@ -127,8 +133,67 @@ func (store *RunStore) SettleEvaluation(ctx context.Context, runID string, lease
 		if requireSingleRow(res) != nil {
 			return run.ErrConflict
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE test_run SET status='COMPLETED', finished_at=UTC_TIMESTAMP(6) WHERE id = ?`, runID); err != nil {
+		turnStatus := run.TurnPassed
+		if !result.Pass {
+			turnStatus = run.TurnFailed
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE test_run_turn SET status = ?, llm_score = ?, final_score = ?, pass = ?, finished_at = UTC_TIMESTAMP(6) WHERE test_run_id = ? AND iteration = ? AND turn_no = ?`,
+			turnStatus, result.LLMScore, result.FinalScore, result.Pass, runID, result.Iteration, result.TurnNo); err != nil {
 			return err
+		}
+		p, err := store.loadPipeline(ctx, tx, runID)
+		if err != nil {
+			return err
+		}
+		record := pipeline.NewNodeResult(p.Context.Iteration, pipeline.JudgeNodeID(result.TurnNo), pipeline.NodeTypeJudge, turnStatus, startedAt, time.Now().UTC())
+		record.Pass = &result.Pass
+		score := pipeline.Round2(result.FinalScore)
+		record.FinalScore = &score
+		p.Result = append(p.Result, record)
+		if !result.Pass {
+			p.Context.RoundPassed = false
+		}
+
+		isLastJudge := p.TurnCount() == result.TurnNo
+		if isLastJudge {
+			// Reached the last judge of the pipeline → its score is this iteration's score,
+			// whether it passed or failed (technical/10 §3.4).
+			p.Context.IterationScores = append(p.Context.IterationScores, score)
+		}
+
+		if isLastJudge || !result.Pass {
+			// Last judge (pass or fail) or a failed intermediate judge → finish. A failed
+			// intermediate judge skips the remaining turn/judge nodes, but finish still runs.
+			if !isLastJudge {
+				for _, node := range p.NodesAfter(pipeline.JudgeNodeID(result.TurnNo)) {
+					p.Result = append(p.Result, pipeline.SkipResult(p.Context.Iteration, node))
+				}
+			}
+			if err := store.savePipeline(ctx, tx, runID, p); err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, `UPDATE test_run SET status = 'RUNNING' WHERE id = ?`, runID); err != nil {
+				return err
+			}
+			if err := enqueueNode(ctx, tx, runID, result.Iteration, pipeline.FinishNodeID); err != nil {
+				return err
+			}
+		} else {
+			// A passed intermediate judge advances to the next turn.
+			if err := store.savePipeline(ctx, tx, runID, p); err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, `UPDATE test_run SET status = 'RUNNING' WHERE id = ?`, runID); err != nil {
+				return err
+			}
+			passed := result.Pass
+			next := p.NextNodes(pipeline.JudgeNodeID(result.TurnNo), pipeline.NodeOutput{Pass: &passed, LLMScore: result.LLMScore, FinalScore: result.FinalScore})
+			if len(next) == 0 {
+				return fmt.Errorf("pipeline judge %q has no outgoing node", pipeline.JudgeNodeID(result.TurnNo))
+			}
+			if err := enqueueNode(ctx, tx, runID, result.Iteration, next[0]); err != nil {
+				return err
+			}
 		}
 		return completeRunLease(ctx, tx, lease)
 	})
@@ -183,16 +248,16 @@ func (store *RunStore) FailEvaluation(ctx context.Context, runID string, lease r
 }
 
 // insertPendingAttempt records the next Evaluation Attempt as PENDING using the active Judge alias.
-func insertPendingAttempt(ctx context.Context, tx *sql.Tx, runID string) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO evaluation_attempt (id, test_run_id, attempt_no, status, judge_model_alias)
+func insertPendingAttempt(ctx context.Context, tx *sql.Tx, runID string, iteration, turnNo int) error {
+	_, err := tx.ExecContext(ctx, `INSERT INTO evaluation_attempt (id, test_run_id, attempt_no, status, judge_model_alias, iteration, turn_no)
 		SELECT ?, ?, COALESCE((SELECT MAX(attempt_no) FROM evaluation_attempt WHERE test_run_id = ?), 0) + 1, 'PENDING',
-		COALESCE((SELECT alias_name FROM model_config WHERE model_role = 'judge' AND enabled = TRUE ORDER BY revision_no DESC LIMIT 1), ?)`,
-		ulid.Make().String(), runID, runID, run.DefaultJudgeAlias)
+		COALESCE((SELECT alias_name FROM model_config WHERE model_role = 'judge' AND enabled = TRUE ORDER BY revision_no DESC LIMIT 1), ?), ?, ?`,
+		ulid.Make().String(), runID, runID, run.DefaultJudgeAlias, iteration, turnNo)
 	return err
 }
 
 // startAttempt moves the open attempt to RUNNING, creating it when the Run predates attempt tracking.
-func startAttempt(ctx context.Context, tx *sql.Tx, runID string) (int, string, error) {
+func startAttempt(ctx context.Context, tx *sql.Tx, runID string, iteration, turnNo int) (int, string, error) {
 	find := func() (int, string, error) {
 		var attemptNo int
 		var alias string
@@ -201,7 +266,7 @@ func startAttempt(ctx context.Context, tx *sql.Tx, runID string) (int, string, e
 	}
 	attemptNo, alias, err := find()
 	if errors.Is(err, sql.ErrNoRows) {
-		if err := insertPendingAttempt(ctx, tx, runID); err != nil {
+		if err := insertPendingAttempt(ctx, tx, runID, iteration, turnNo); err != nil {
 			return 0, "", err
 		}
 		attemptNo, alias, err = find()
@@ -215,7 +280,8 @@ func startAttempt(ctx context.Context, tx *sql.Tx, runID string) (int, string, e
 	return attemptNo, alias, nil
 }
 
-// Reevaluate copies the evidence of a finished Run into a new EVALUATING Run and queues its evaluation.
+// Reevaluate copies the evidence of a finished Run into a new EVALUATING Run, resetting its turns
+// to re-judge from the first turn with the chosen Judge alias.
 func (store *RunStore) Reevaluate(ctx context.Context, sourceID, newID, requestKey, requestSHA256, judgeAlias string) error {
 	tx, err := store.database.BeginTx(ctx, nil)
 	if err != nil {
@@ -224,7 +290,9 @@ func (store *RunStore) Reevaluate(ctx context.Context, sourceID, newID, requestK
 	defer tx.Rollback()
 	var status string
 	var outcome sql.NullString
-	if err := tx.QueryRowContext(ctx, `SELECT status, execution_outcome FROM test_run WHERE id = ? FOR UPDATE`, sourceID).Scan(&status, &outcome); errors.Is(err, sql.ErrNoRows) {
+	var pipelineJSON []byte
+	if err := tx.QueryRowContext(ctx, `SELECT status, execution_outcome, CAST(pipeline_json AS CHAR) FROM test_run WHERE id = ? FOR UPDATE`, sourceID).
+		Scan(&status, &outcome, &pipelineJSON); errors.Is(err, sql.ErrNoRows) {
 		return run.ErrNotFound
 	} else if err != nil {
 		return fmt.Errorf("lock source Test Run: %w", err)
@@ -232,26 +300,72 @@ func (store *RunStore) Reevaluate(ctx context.Context, sourceID, newID, requestK
 	if (status != run.StatusCompleted && status != run.StatusEvaluationFailed) || !outcome.Valid {
 		return run.ErrConflict
 	}
+	// Re-derive the pipeline so the new Run starts with a fresh context (iteration 1, empty
+	// iteration_scores/result); only the turn evidence (watermarks, outputs) is copied.
+	definition, err := pipeline.Parse(store.validator, pipelineJSON)
+	if err != nil {
+		return err
+	}
+	fresh, err := pipeline.Derive(definition.TurnCount(), definition.Config.Repetitions)
+	if err != nil {
+		return err
+	}
+	freshJSON, err := pipeline.Marshal(store.validator, fresh)
+	if err != nil {
+		return err
+	}
 	rowSum := sha256.Sum256([]byte(requestKey + "/" + newID))
 	if _, err := tx.ExecContext(ctx, `INSERT INTO test_run (id, idempotency_key, request_key, request_sha256, test_case_revision_id, dataset_revision_id,
 			agent_id, repetition_no, status, execution_outcome, input_text, final_output, session_id,
+			pipeline_json, turns_total,
 			actual_output_sha256, started_at, agent_finished_at, environment_cleaned_at)
 		SELECT ?, ?, ?, ?, test_case_revision_id, dataset_revision_id, agent_id,
 			(SELECT COALESCE(MAX(x.repetition_no), 0) + 1 FROM test_run x WHERE x.agent_id = s.agent_id AND x.test_case_revision_id = s.test_case_revision_id),
 			'EVALUATING', execution_outcome, input_text, final_output, session_id,
+			?, turns_total,
 			actual_output_sha256, started_at, agent_finished_at, environment_cleaned_at
-		FROM test_run s WHERE s.id = ?`, newID, hex.EncodeToString(rowSum[:]), requestKey, requestSHA256, sourceID); err != nil {
+		FROM test_run s WHERE s.id = ?`, newID, hex.EncodeToString(rowSum[:]), requestKey, requestSHA256, string(freshJSON), sourceID); err != nil {
 		if isDuplicate(err) {
 			return run.ErrDuplicate
 		}
 		return fmt.Errorf("insert re-evaluation Run: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO evaluation_attempt (id, test_run_id, attempt_no, status, judge_model_alias) VALUES (?, ?, 1, 'PENDING', ?)`,
+	turnRows, err := tx.QueryContext(ctx, `SELECT iteration, turn_no, prompt, final_output, output_sha256, context_watermark FROM test_run_turn WHERE test_run_id = ? ORDER BY iteration, turn_no`, sourceID)
+	if err != nil {
+		return fmt.Errorf("load source turns: %w", err)
+	}
+	type sourceTurn struct {
+		iteration        int
+		turnNo           int
+		prompt           string
+		finalOutput      sql.NullString
+		outputSHA256     sql.NullString
+		contextWatermark sql.NullInt64
+	}
+	var turns []sourceTurn
+	for turnRows.Next() {
+		var item sourceTurn
+		if err := turnRows.Scan(&item.iteration, &item.turnNo, &item.prompt, &item.finalOutput, &item.outputSHA256, &item.contextWatermark); err != nil {
+			turnRows.Close()
+			return fmt.Errorf("scan source turn: %w", err)
+		}
+		turns = append(turns, item)
+	}
+	turnRows.Close()
+	if err := turnRows.Err(); err != nil {
+		return err
+	}
+	for _, item := range turns {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO test_run_turn (id, test_run_id, iteration, turn_no, prompt, status, final_output, output_sha256, context_watermark) VALUES (?, ?, ?, ?, ?, 'PENDING', ?, ?, ?)`,
+			ulid.Make().String(), newID, item.iteration, item.turnNo, item.prompt, item.finalOutput, item.outputSHA256, item.contextWatermark); err != nil {
+			return fmt.Errorf("copy turn: %w", err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO evaluation_attempt (id, test_run_id, attempt_no, status, judge_model_alias, iteration, turn_no) VALUES (?, ?, 1, 'PENDING', ?, 1, 1)`,
 		ulid.Make().String(), newID, judgeAlias); err != nil {
 		return fmt.Errorf("insert evaluation attempt: %w", err)
 	}
-	payload, _ := json.Marshal(map[string]string{"test_run_id": newID})
-	if _, err := tx.ExecContext(ctx, runEnqueueSQL, ulid.Make().String(), run.QueueEvaluation, run.AggregateType, newID, run.StageEvaluate, string(payload)); err != nil {
+	if err := enqueueJudge(ctx, tx, newID, 1, 1); err != nil {
 		return fmt.Errorf("enqueue evaluation: %w", err)
 	}
 	if err := tx.Commit(); err != nil {

@@ -26,7 +26,7 @@ type Queue interface {
 
 // Store persists fenced Run state transitions.
 type Store interface {
-	BeginExecution(ctx context.Context, runID string, lease run.Lease) (run.Job, error)
+	BeginExecution(ctx context.Context, runID string, lease run.Lease, node run.NodeRef) (run.Job, error)
 	MarkRunning(ctx context.Context, runID string, lease run.Lease) error
 	Settle(ctx context.Context, runID string, lease run.Lease, settlement run.Settlement) error
 	FailExecution(ctx context.Context, runID string, lease run.Lease, failure run.Failure, backoff time.Duration) (bool, error)
@@ -131,29 +131,35 @@ func (worker *Worker) ProcessNext(ctx context.Context) (bool, error) {
 
 type payload struct {
 	TestRunID string `json:"test_run_id"`
+	Iteration int    `json:"iteration"`
+	NodeID    string `json:"node_id"`
 }
 
-func parseItem(item mysqlqueue.Item) (string, error) {
-	if item.QueueName != run.QueueName || item.AggregateType != run.AggregateType || item.StageKey != run.StageExecute {
-		return "", errors.New("work item is not a run execution item")
+func parseItem(item mysqlqueue.Item) (string, run.NodeRef, error) {
+	if item.QueueName != run.QueueName || item.AggregateType != run.AggregateType {
+		return "", run.NodeRef{}, errors.New("work item is not a run node item")
 	}
 	if item.AttemptCount < 1 || item.MaxAttempts < 1 || item.FencingToken == 0 || strings.TrimSpace(item.LeaseOwner) == "" {
-		return "", errors.New("work item lease is incomplete")
+		return "", run.NodeRef{}, errors.New("work item lease is incomplete")
 	}
 	decoder := json.NewDecoder(strings.NewReader(string(item.Payload)))
 	decoder.DisallowUnknownFields()
 	var body payload
 	if err := decoder.Decode(&body); err != nil {
-		return "", fmt.Errorf("decode payload: %w", err)
+		return "", run.NodeRef{}, fmt.Errorf("decode payload: %w", err)
 	}
 	var trailing json.RawMessage
 	if decoder.Decode(&trailing) != io.EOF {
-		return "", errors.New("payload has trailing data")
+		return "", run.NodeRef{}, errors.New("payload has trailing data")
 	}
 	if body.TestRunID == "" || body.TestRunID != item.AggregateID {
-		return "", errors.New("payload test_run_id does not match aggregate")
+		return "", run.NodeRef{}, errors.New("payload test_run_id does not match aggregate")
 	}
-	return body.TestRunID, nil
+	if body.Iteration < 1 || run.NodeTypeOf(body.NodeID) == "" {
+		return "", run.NodeRef{}, errors.New("payload iteration or node_id is invalid")
+	}
+	node := run.NodeRef{NodeID: body.NodeID, Iteration: body.Iteration, TurnNo: run.NodeTurn(body.NodeID)}
+	return body.TestRunID, node, nil
 }
 
 func leaseOf(item mysqlqueue.Item) run.Lease {
@@ -166,7 +172,7 @@ func failureJSON(failure run.Failure) json.RawMessage {
 }
 
 func (worker *Worker) processClaimed(ctx context.Context, item mysqlqueue.Item) error {
-	runID, err := parseItem(item)
+	runID, node, err := parseItem(item)
 	if err != nil {
 		return worker.queue.Fail(ctx, item, false, 0, failureJSON(run.Failure{Code: "INVALID_WORK_ITEM", Message: err.Error()}))
 	}
@@ -184,7 +190,7 @@ func (worker *Worker) processClaimed(ctx context.Context, item mysqlqueue.Item) 
 	heartbeatDone := make(chan error, 1)
 	go func() { heartbeatDone <- worker.maintainLease(processCtx, cancel, item) }()
 
-	processErr := worker.process(processCtx, runID, lease)
+	processErr := worker.process(processCtx, runID, node, lease)
 	timedOut := errors.Is(processCtx.Err(), context.DeadlineExceeded)
 	cancel()
 	heartbeatErr := <-heartbeatDone
@@ -213,8 +219,8 @@ func (worker *Worker) processClaimed(ctx context.Context, item mysqlqueue.Item) 
 	return err
 }
 
-func (worker *Worker) process(ctx context.Context, runID string, lease run.Lease) error {
-	job, err := worker.store.BeginExecution(ctx, runID, lease)
+func (worker *Worker) process(ctx context.Context, runID string, node run.NodeRef, lease run.Lease) error {
+	job, err := worker.store.BeginExecution(ctx, runID, lease, node)
 	if err != nil {
 		slog.Error("begin execution failed", "run_id", runID, "error", err)
 		return err

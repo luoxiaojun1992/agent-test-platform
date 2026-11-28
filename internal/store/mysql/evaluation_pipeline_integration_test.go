@@ -97,7 +97,7 @@ func TestEvaluationPipelineWithMockJudgeOnMySQL84(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store, _ := NewRunStore(workerDB)
+	store, _ := NewRunStore(workerDB, validator)
 	queue, err := mysqlqueue.New(workerDB)
 	if err != nil {
 		t.Fatal(err)

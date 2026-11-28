@@ -4,7 +4,7 @@
   "title": "LLM Judge Request",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "execution_outcome", "prompt", "expected_output", "actual_output", "generation_assumptions", "session_context", "evaluation_criteria"],
+  "required": ["schema_version", "execution_outcome", "prompt", "expected_output", "actual_output", "generation_assumptions", "session_context", "evaluation_criteria", "turn", "total_turns"],
   "properties": {
     "schema_version": {"const": "1.0"},
     "execution_outcome": {"enum": ["COMPLETED", "AGENT_ERROR", "TIMEOUT", "CANCELLED"]},
@@ -22,7 +22,9 @@
       "minItems": 1,
       "maxItems": 16,
       "items": {"$ref": "create-test-case.schema.json#/$defs/criterion"}
-    }
+    },
+    "turn": {"type": "integer", "minimum": 1, "maximum": 16},
+    "total_turns": {"type": "integer", "minimum": 1, "maximum": 16}
   },
   "$defs": {
     "contextItem": {

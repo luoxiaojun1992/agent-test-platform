@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -54,6 +55,7 @@ func NewServer(config Config, validator *contracts.Validator) (*Server, error) {
 	server.mux.Handle("GET /v1/tools", server.authenticate(http.HandlerFunc(server.listTools)))
 	server.mux.Handle("POST /v1/knowledge/documents", server.authenticate(http.HandlerFunc(server.uploadKnowledge)))
 	server.mux.Handle("GET /v1/knowledge/documents/{documentId}", server.authenticate(http.HandlerFunc(server.getKnowledgeStatus)))
+	server.mux.Handle("DELETE /v1/knowledge/documents/{documentId}", server.authenticate(http.HandlerFunc(server.deleteKnowledge)))
 	server.mux.Handle("GET /v1/sessions/{sessionId}/context", server.authenticate(http.HandlerFunc(server.getSessionContext)))
 	server.mux.Handle("POST /v1/chat", server.authenticate(http.HandlerFunc(server.chat)))
 	return server, nil
@@ -162,6 +164,21 @@ func (server *Server) uploadKnowledge(writer http.ResponseWriter, request *http.
 	})
 }
 
+func (server *Server) deleteKnowledge(writer http.ResponseWriter, request *http.Request) {
+	id := request.PathValue("documentId")
+	server.mu.Lock()
+	_, exists := server.documents[id]
+	if exists {
+		delete(server.documents, id)
+	}
+	server.mu.Unlock()
+	if !exists {
+		writeError(writer, http.StatusNotFound, "KNOWLEDGE_NOT_FOUND", "knowledge document was not found", false)
+		return
+	}
+	writer.WriteHeader(http.StatusNoContent)
+}
+
 func (server *Server) getKnowledgeStatus(writer http.ResponseWriter, request *http.Request) {
 	id := request.PathValue("documentId")
 	server.mu.RLock()
@@ -239,7 +256,10 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 	sequence := 1
 	server.writeSSE(writer, flusher, input.RunID, sequence, "response.created", nil)
 	sequence++
-	sessionID := "sess-" + strings.ToLower(input.RunID)
+	sessionID := input.SessionID
+	if sessionID == "" {
+		sessionID = "sess-" + strings.ToLower(input.RunID)
+	}
 	now := time.Now().UTC()
 	server.writeSSE(writer, flusher, input.RunID, sequence, "response.tool_call", map[string]any{
 		"tool_sequence": 1, "call_id": "mock-target-call-1", "parent_call_id": nil,
@@ -259,12 +279,18 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 		"usage": map[string]int{"input_tokens": 32, "output_tokens": 16},
 	})
 	server.mu.Lock()
-	server.sessions[sessionID] = []agent.SessionContextItem{
-		{Sequence: 1, Type: "MESSAGE", Role: "user", Content: input.Message.Content, CreatedAt: now},
-		{Sequence: 2, Type: "TOOL_CALL", ToolName: "sql_executor", Arguments: json.RawMessage(`{"query":"SELECT status FROM orders WHERE id = 'O2'"}`), CreatedAt: now},
-		{Sequence: 3, Type: "TOOL_RESULT", ToolName: "sql_executor", Status: "SUCCESS", Result: json.RawMessage(`{"status":"PAID"}`), CreatedAt: now},
-		{Sequence: 4, Type: "MESSAGE", Role: "assistant", Content: finalOutput, CreatedAt: now},
+	existing := server.sessions[sessionID]
+	startSequence := 1
+	if len(existing) > 0 {
+		startSequence = existing[len(existing)-1].Sequence + 1
 	}
+	turnItems := []agent.SessionContextItem{
+		{Sequence: startSequence, Type: "MESSAGE", Role: "user", Content: input.Message.Content, CreatedAt: now},
+		{Sequence: startSequence + 1, Type: "TOOL_CALL", ToolName: "sql_executor", Arguments: json.RawMessage(`{"query":"SELECT status FROM orders WHERE id = 'O2'"}`), CreatedAt: now},
+		{Sequence: startSequence + 2, Type: "TOOL_RESULT", ToolName: "sql_executor", Status: "SUCCESS", Result: json.RawMessage(`{"status":"PAID"}`), CreatedAt: now},
+		{Sequence: startSequence + 3, Type: "MESSAGE", Role: "assistant", Content: finalOutput, CreatedAt: now},
+	}
+	server.sessions[sessionID] = append(existing, turnItems...)
 	server.mu.Unlock()
 }
 
@@ -279,6 +305,20 @@ func (server *Server) getSessionContext(writer http.ResponseWriter, request *htt
 	}
 	if items == nil {
 		items = []agent.SessionContextItem{}
+	}
+	if until := request.URL.Query().Get("until_sequence"); until != "" {
+		limit, err := strconv.Atoi(until)
+		if err != nil || limit < 0 {
+			writeError(writer, http.StatusBadRequest, "QUERY_INVALID", "until_sequence must be a non-negative integer", false)
+			return
+		}
+		filtered := make([]agent.SessionContextItem, 0, len(items))
+		for _, item := range items {
+			if item.Sequence <= limit {
+				filtered = append(filtered, item)
+			}
+		}
+		items = filtered
 	}
 	writeJSON(writer, http.StatusOK, map[string]any{
 		"schema_version": "1.0", "session_id": sessionID, "items": items, "next_cursor": nil,

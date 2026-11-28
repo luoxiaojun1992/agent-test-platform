@@ -21,8 +21,8 @@ func TestCapOutput(t *testing.T) {
 }
 
 func TestBuildRequestPromptNamesDatabase(t *testing.T) {
-	job := run.Job{RunID: "run1", Prompt: "do it", Agent: run.AgentSpec{Model: "m"}}
-	request, err := buildRequest(job, "atp_run_x", time.Now(), nil)
+	job := run.Job{RunID: "run1", TurnNo: 1, Agent: run.AgentSpec{Model: "m"}}
+	request, err := buildRequest(job, "do it", "atp_run_x", time.Now(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

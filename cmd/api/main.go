@@ -101,7 +101,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("create Agent service: %w", err)
 	}
-	runDatabaseStore, err := mysqlstore.NewRunStore(database)
+	runDatabaseStore, err := mysqlstore.NewRunStore(database, validator)
 	if err != nil {
 		return fmt.Errorf("create run store: %w", err)
 	}
@@ -118,11 +118,11 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("create catalog service: %w", err)
 	}
-	runStore, err := mysqlstore.NewRunStore(database)
+	runStore, err := mysqlstore.NewRunStore(database, validator)
 	if err != nil {
 		return fmt.Errorf("create run store: %w", err)
 	}
-	runService, err := runs.NewService(runStore)
+	runService, err := runs.NewService(runStore, validator)
 	if err != nil {
 		return fmt.Errorf("create run service: %w", err)
 	}

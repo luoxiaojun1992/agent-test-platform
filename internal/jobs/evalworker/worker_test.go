@@ -35,7 +35,7 @@ type fakeStore struct {
 	attemptNo int
 }
 
-func (store *fakeStore) BeginEvaluation(context.Context, string, run.Lease) (run.EvaluationJob, error) {
+func (store *fakeStore) BeginEvaluation(context.Context, string, run.Lease, run.NodeRef) (run.EvaluationJob, error) {
 	return run.EvaluationJob{RunID: "run-1", AttemptNo: 2}, store.beginErr
 }
 func (store *fakeStore) SettleEvaluation(_ context.Context, _ string, _ run.Lease, attemptNo int, _ run.EvaluationResult, _ time.Time) error {
@@ -54,8 +54,8 @@ func (evaluator fakeEvaluator) Evaluate(context.Context, run.EvaluationJob) (run
 }
 
 func validItem() mysqlqueue.Item {
-	return mysqlqueue.Item{ID: "w1", QueueName: run.QueueEvaluation, AggregateType: run.AggregateType, AggregateID: "run-1", StageKey: run.StageEvaluate,
-		Payload: json.RawMessage(`{"test_run_id":"run-1"}`), FencingToken: 1, AttemptCount: 1, MaxAttempts: 3, LeaseOwner: "owner"}
+	return mysqlqueue.Item{ID: "w1", QueueName: run.QueueEvaluation, AggregateType: run.AggregateType, AggregateID: "run-1", StageKey: run.StageKey(1, "judge-1"),
+		Payload: json.RawMessage(`{"test_run_id":"run-1","iteration":1,"node_id":"judge-1","turn_no":1}`), FencingToken: 1, AttemptCount: 1, MaxAttempts: 3, LeaseOwner: "owner"}
 }
 
 func newWorker(t *testing.T, queue *fakeQueue, store *fakeStore, evaluator Evaluator) *Worker {

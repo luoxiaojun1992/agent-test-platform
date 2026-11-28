@@ -63,7 +63,7 @@ func (evaluator *JudgeEvaluator) Evaluate(ctx context.Context, job run.Evaluatio
 	if err != nil {
 		return run.EvaluationResult{}, err
 	}
-	items, err := client.ListAllSessionContext(ctx, job.SessionID, 0)
+	items, err := client.ListAllSessionContext(ctx, job.SessionID, 0, job.UntilSequence)
 	if err != nil {
 		return run.EvaluationResult{}, RetryableError{Err: err}
 	}
@@ -75,8 +75,8 @@ func (evaluator *JudgeEvaluator) Evaluate(ctx context.Context, job run.Evaluatio
 		}
 		contextItems[index] = encoded
 	}
-	prepared, err := evaluation.BuildRequest(evaluation.RequestInput{Outcome: job.Outcome, Prompt: job.Prompt, CaseJSON: job.CaseJSON,
-		FinalOutput: job.FinalOutput, SessionContext: contextItems})
+	prepared, err := evaluation.BuildRequest(evaluation.RequestInput{Outcome: job.Outcome, TurnNo: job.TurnNo, TotalTurns: job.TotalTurns, CaseJSON: job.CaseJSON,
+		SessionContext: contextItems})
 	if err != nil {
 		return run.EvaluationResult{}, err
 	}
@@ -110,7 +110,7 @@ func (evaluator *JudgeEvaluator) Evaluate(ctx context.Context, job run.Evaluatio
 	if err != nil {
 		return run.EvaluationResult{}, err
 	}
-	out := run.EvaluationResult{Provider: evaluator.model.Provider, Model: evaluator.model.Model, Alias: evaluator.model.Alias,
+	out := run.EvaluationResult{TurnNo: job.TurnNo, Provider: evaluator.model.Provider, Model: evaluator.model.Model, Alias: evaluator.model.Alias,
 		PromptVersion: PromptVersion, ConfigSHA256: hex.EncodeToString(sum[:]), BaseURL: evaluator.model.BaseURL, ConfigJSON: config,
 		RequestJSON: prepared.RequestJSON, ResponseJSON: responseJSON, CriteriaJSON: criteria, FailureCategories: categoriesJSON,
 		LLMScore: verdict.LLMScore, FinalScore: verdict.FinalScore, Pass: verdict.Pass, ProviderRequestID: response.ProviderRequestID}

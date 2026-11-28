@@ -356,8 +356,9 @@ type SessionContextPage struct {
 	NextCursor    *string              `json:"next_cursor"`
 }
 
-// GetSessionContext fetches one page of a Target session's LLM context.
-func (client *SSEClient) GetSessionContext(ctx context.Context, sessionID, cursor string, limit int) (SessionContextPage, error) {
+// GetSessionContext fetches one page of a Target session's LLM context, optionally bounded by
+// untilSequence (only items with sequence <= untilSequence are returned).
+func (client *SSEClient) GetSessionContext(ctx context.Context, sessionID, cursor string, limit, untilSequence int) (SessionContextPage, error) {
 	if strings.TrimSpace(sessionID) == "" {
 		return SessionContextPage{}, fmt.Errorf("session ID is required")
 	}
@@ -367,6 +368,9 @@ func (client *SSEClient) GetSessionContext(ctx context.Context, sessionID, curso
 	}
 	if limit > 0 {
 		query.Set("limit", strconv.Itoa(limit))
+	}
+	if untilSequence > 0 {
+		query.Set("until_sequence", strconv.Itoa(untilSequence))
 	}
 	path := "/v1/sessions/" + url.PathEscape(sessionID) + "/context"
 	if encoded := query.Encode(); encoded != "" {
@@ -388,9 +392,9 @@ func (client *SSEClient) GetSessionContext(ctx context.Context, sessionID, curso
 	return page, nil
 }
 
-// ListAllSessionContext pages through the whole context of a session until the cursor is exhausted,
-// bounded by maxItems.
-func (client *SSEClient) ListAllSessionContext(ctx context.Context, sessionID string, maxItems int) ([]SessionContextItem, error) {
+// ListAllSessionContext pages through a session's context up to untilSequence (0 means the whole
+// session) until the cursor is exhausted, bounded by maxItems.
+func (client *SSEClient) ListAllSessionContext(ctx context.Context, sessionID string, maxItems, untilSequence int) ([]SessionContextItem, error) {
 	if maxItems <= 0 {
 		maxItems = maxSessionContextItems
 	}
@@ -398,7 +402,7 @@ func (client *SSEClient) ListAllSessionContext(ctx context.Context, sessionID st
 	lastSequence := 0
 	cursor := ""
 	for {
-		page, err := client.GetSessionContext(ctx, sessionID, cursor, 100)
+		page, err := client.GetSessionContext(ctx, sessionID, cursor, 100, untilSequence)
 		if err != nil {
 			return nil, err
 		}

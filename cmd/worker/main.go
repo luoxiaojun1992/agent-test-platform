@@ -234,7 +234,7 @@ func run() error {
 		return fmt.Errorf("create Generation Worker: %w", err)
 	}
 
-	runStore, err := mysqlstore.NewRunStore(database)
+	runStore, err := mysqlstore.NewRunStore(database, validator)
 	if err != nil {
 		return err
 	}
